@@ -2,12 +2,23 @@
   "name": "Mutabaah — Tumbuh dalam kebiasaan baik",
   "short_name": "Mutabaah",
   "description": "PWA untuk mencatat, memantau, dan membangun konsistensi ibadah harian keluarga.",
-  "start_url": "/beranda",
+  "start_url": "/beranda?utm_source=pwa",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "portrait",
   "background_color": "#fdfcfa",
   "theme_color": "#17654a",
+  "categories": ["lifestyle", "productivity"],
+  "lang": "id",
+  "dir": "ltr",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Isi Mutabaah Hari Ini", "url": "/mutabaah", "description": "Check-in harian <30 detik", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Progress Mingguan", "url": "/progress", "description": "Lihat konsistensi", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
   ]
 }
