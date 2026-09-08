@@ -1,5 +1,5 @@
-// Mutabaah PWA SW — fix stale chunks (Loader2 error)
-const CACHE = "mutabaah-v3";
+// Mutabaah PWA SW — v5 quran via alquran.cloud (Madinah akurat)
+const CACHE = "mutabaah-v5";
 const PRECACHE = ["/", "/manifest.json", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (e) => {

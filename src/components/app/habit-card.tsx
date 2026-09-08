@@ -1,6 +1,6 @@
 "use client";
 import { cn } from "@/lib/utils";
-import { Check, Minus, Plus } from "lucide-react";
+import { BookOpen, Check, Minus, Plus } from "lucide-react";
 import type { Habit, Entry } from "@/lib/mock-data";
 import { getHabitProgress } from "@/lib/mock-data";
 
@@ -9,11 +9,13 @@ export function HabitCard({
   entry,
   onToggle,
   onUpdateValue,
+  onRead,
 }: {
   habit: Habit;
   entry: Entry | undefined;
   onToggle: () => void;
   onUpdateValue: (delta: number) => void;
+  onRead?: () => void;
 }) {
   const progress = getHabitProgress(habit, entry);
   const isCompleted = progress === 100;
@@ -69,6 +71,15 @@ export function HabitCard({
               >
                 <Plus className="h-3.5 w-3.5" />
               </button>
+              {habit.category === "Al-Qur'an" && onRead && (
+                <button
+                  onClick={onRead}
+                  className="h-8 px-3 rounded-full border bg-card flex items-center gap-1.5 text-xs font-medium hover:bg-muted"
+                  aria-label="Baca Quran"
+                >
+                  <BookOpen className="h-3.5 w-3.5" /> Baca
+                </button>
+              )}
             </div>
             <div className="hidden sm:block h-2 flex-1 max-w-[100px] rounded-full bg-muted overflow-hidden ml-1">
               <div className="h-full bg-primary transition-all duration-500" style={{ width: `${progress}%` }} />
