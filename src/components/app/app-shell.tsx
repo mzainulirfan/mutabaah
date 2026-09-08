@@ -8,12 +8,10 @@ import {
   BarChart3,
   Users2,
   User,
-  Menu,
   Bell,
   Flame,
   LogOut,
 } from "lucide-react";
-import { useState } from "react";
 
 const parentNav = [
   { href: "/beranda", label: "Beranda", icon: LayoutDashboard },
@@ -26,7 +24,6 @@ const parentNav = [
 export function AppShell({ children, role = "parent" }: { children: React.ReactNode; role?: "parent" | "member" }) {
   const pathname = usePathname();
   const nav = parentNav;
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -95,51 +92,23 @@ export function AppShell({ children, role = "parent" }: { children: React.ReactN
 
       {/* Main */}
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Topbar mobile */}
+        {/* Topbar mobile — minimal, nav via bottom */}
         <header className="lg:hidden sticky top-0 z-30 bg-card/80 backdrop-blur border-b">
           <div className="flex items-center justify-between px-4 h-14">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setMobileOpen(!mobileOpen)}
-                className="h-9 w-9 rounded-full border flex items-center justify-center"
-              >
-                <Menu className="h-4 w-4" />
-              </button>
-              <div className="flex items-center gap-2">
-                <div className="h-7 w-7 rounded-lg bg-primary flex items-center justify-center text-white font-bold text-xs">
-                  م
-                </div>
-                <span className="font-semibold text-sm">Mutabaah</span>
-              </div>
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 rounded-lg bg-primary flex items-center justify-center text-white font-bold text-xs">م</div>
+              <span className="font-semibold text-sm">Mutabaah</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary-soft)] px-2.5 py-1 text-xs font-medium text-primary">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary-soft)] px-2.5 py-1 text-xs font-medium text-primary border border-primary/10">
                 <Flame className="h-3.5 w-3.5" /> 7
               </span>
-              <button className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
+              <button className="h-9 w-9 rounded-full bg-muted flex items-center justify-center" aria-label="Notifikasi">
                 <Bell className="h-4 w-4" />
               </button>
               <img src="https://i.pravatar.cc/100?img=15" alt="avatar" className="h-8 w-8 rounded-full" />
             </div>
           </div>
-          {mobileOpen && (
-            <nav className="px-2 pb-3 grid grid-cols-3 gap-2">
-              {nav.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMobileOpen(false)}
-                  className={cn(
-                    "flex flex-col items-center gap-1 py-3 rounded-xl text-xs font-medium border",
-                    pathname === item.href ? "bg-primary text-white border-primary" : "bg-card"
-                  )}
-                >
-                  <item.icon className="h-5 w-5" />
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
-          )}
         </header>
 
         {/* Content */}
