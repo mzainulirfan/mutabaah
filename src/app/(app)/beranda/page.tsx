@@ -185,7 +185,7 @@ export default function BerandaPage() {
   const heroStreak = isMemberOnly ? self.streak : Math.max(...members.map((m) => m.streak), 0);
 
   return (
-    <div className="space-y-6 pb-20 lg:pb-0">
+    <div className="space-y-6 pb-20 lg:pb-0 overflow-x-clip">
       {/* Sapaan — minimal */}
       <section aria-label="Sapaan">
         <p className="text-xs text-muted-foreground">{todayLabel}</p>
@@ -322,8 +322,8 @@ export default function BerandaPage() {
       </section>
 
       {/* Minggu ini + kabar — reflektif, bukan kompetitif */}
-      <div className="grid lg:grid-cols-3 gap-6">
-        <Card className="rounded-[20px] p-5 lg:col-span-2">
+      <div className="grid lg:grid-cols-3 gap-6 min-w-0">
+        <Card className="rounded-[20px] p-5 lg:col-span-2 min-w-0">
           <div className="flex items-center justify-between gap-2">
             <div>
               <h3 className="font-semibold text-sm">Perjalanan minggu ini</h3>
@@ -361,7 +361,7 @@ export default function BerandaPage() {
           )}
         </Card>
 
-        <Card className="rounded-[20px] p-5">
+        <Card className="rounded-[20px] p-5 min-w-0">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-sm">Kabar terbaru</h3>
             {waitingCount > 0 && (
