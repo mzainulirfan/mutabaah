@@ -8,7 +8,24 @@ import { createClient } from "@/lib/supabase/client";
 type HabitRow = { id: string; name: string; category: string; type: string; target_value: number; unit: string | null; is_active: boolean };
 
 const categories = ["Ibadah Wajib", "Ibadah Sunnah", "Al-Qur'an", "Dzikir & Doa", "Akhlak", "Belajar", "Kebiasaan Baik", "Custom"] as const;
-const types = ["BOOLEAN", "QUANTITY", "COUNTER", "DURATION"] as const;
+
+const typeOptions = [
+  { value: "BOOLEAN", label: "Sekali ketuk", hint: "Cukup ketuk sekali kalau sudah dikerjakan. Contoh: Shalat Subuh.", unitPlaceholder: "" },
+  { value: "QUANTITY", label: "Hitung jumlah", hint: "Catat berapa banyak yang dibaca. Contoh: Tilawah 5 halaman.", unitPlaceholder: "halaman / ayat" },
+  { value: "COUNTER", label: "Hitung pengulangan", hint: "Ketuk + setiap selesai satu putaran. Contoh: dzikir 33 kali.", unitPlaceholder: "kali" },
+  { value: "DURATION", label: "Hitung menit", hint: "Catat berapa lama waktunya. Contoh: membaca 20 menit.", unitPlaceholder: "menit" },
+] as const;
+
+function typeLabel(type: string) {
+  return typeOptions.find((t) => t.value === type)?.label ?? type;
+}
+
+function habitTargetText(h: { type: string; target_value: number; unit: string | null }) {
+  if (h.type === "BOOLEAN") return "Sekali ketuk";
+  if (h.type === "DURATION") return `Target ${h.target_value} ${h.unit ?? "menit"}`;
+  if (h.target_value > 1) return `Target ${h.target_value} ${h.unit ?? "kali"}`;
+  return "Hitung jumlah";
+}
 
 const templates: Record<string, { name: string; category: string; type: string; target: number; unit?: string }[]> = {
   Anak: [
@@ -83,14 +100,24 @@ export default function KeluargaPage() {
     } catch (e: any) { setMsg(e.message); } finally { setInviteLoading(false); }
   };
 
+  const selectedType = typeOptions.find((t) => t.value === newHabit.type) ?? typeOptions[0];
+
   const handleAddHabit = async () => {
     if (!family || !newHabit.name.trim()) return;
     setAdding(true);
     try {
       const { createHabit } = await import("@/lib/actions/habit");
-      await createHabit({ family_id: family.id, name: newHabit.name.trim(), category: newHabit.category, type: newHabit.type as any, target_value: Number(newHabit.target) || 1, unit: newHabit.unit || undefined });
+      const isTap = newHabit.type === "BOOLEAN";
+      await createHabit({
+        family_id: family.id,
+        name: newHabit.name.trim(),
+        category: newHabit.category,
+        type: newHabit.type as any,
+        target_value: isTap ? 1 : Number(newHabit.target) || 1,
+        unit: isTap ? undefined : newHabit.unit.trim() || selectedType.unitPlaceholder,
+      });
       setNewHabit({ name: "", category: "Ibadah Wajib", type: "BOOLEAN", target: 1, unit: "" });
-      setMsg("Amalan ditambahkan.");
+      setMsg(`Amalan "${newHabit.name.trim()}" tersimpan. Silakan isi mulai hari ini.`);
       load();
     } catch (e: any) { setMsg(e.message); } finally { setAdding(false); }
   };
@@ -244,10 +271,10 @@ export default function KeluargaPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate flex items-center gap-1.5">
-                      {h.name} {!h.is_active && <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full">nonaktif</span>}
+                      {h.name} {!h.is_active && <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full">Dijeda</span>}
                     </div>
                     <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-                      <span className={`h-1.5 w-1.5 rounded-full ${h.is_active ? "bg-primary" : "bg-muted-foreground"}`} /> {h.category} • {h.type} {h.target_value > 1 ? `• ${h.target_value} ${h.unit ?? ""}` : ""} {h.type === "DURATION" ? "• durasi" : ""}
+                      <span className={`h-1.5 w-1.5 rounded-full ${h.is_active ? "bg-primary" : "bg-muted-foreground"}`} /> {h.category} • {typeLabel(h.type)}{h.type !== "BOOLEAN" ? ` • ${habitTargetText(h)}` : ""}
                     </div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
@@ -262,33 +289,49 @@ export default function KeluargaPage() {
             </div>
           )}
 
-          <div className="mt-5 rounded-2xl border p-4 space-y-3 bg-muted/30">
+          <div className="mt-5 rounded-2xl border p-4 space-y-4 bg-muted/30">
             <div className="font-semibold text-sm flex items-center gap-2">
-              <Plus className="h-4 w-4" /> Tambah Amalan
+              <Plus className="h-4 w-4" /> Buat amalan baru
             </div>
-            <input placeholder="Nama amalan, mis. Shalat Dhuha" value={newHabit.name} onChange={(e) => setNewHabit({ ...newHabit, name: e.target.value })} className="w-full rounded-xl border bg-card px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-            <div className="grid grid-cols-2 gap-2">
-              <select value={newHabit.category} onChange={(e) => setNewHabit({ ...newHabit, category: e.target.value })} className="rounded-xl border bg-card px-2.5 py-2.5 text-sm">
+            <div>
+              <label htmlFor="amalan-nama" className="text-xs font-medium">Nama amalan</label>
+              <input id="amalan-nama" placeholder="Contoh: Shalat Dhuha, Tilawah" value={newHabit.name} onChange={(e) => setNewHabit({ ...newHabit, name: e.target.value })} className="mt-1.5 w-full rounded-xl border bg-card px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+            </div>
+            <div>
+              <label htmlFor="amalan-kelompok" className="text-xs font-medium">Kelompok</label>
+              <select id="amalan-kelompok" value={newHabit.category} onChange={(e) => setNewHabit({ ...newHabit, category: e.target.value })} className="mt-1.5 w-full rounded-xl border bg-card px-2.5 py-2.5 text-sm">
                 {categories.map((c) => (
                   <option key={c} value={c}>
                     {c}
                   </option>
                 ))}
               </select>
-              <select value={newHabit.type} onChange={(e) => setNewHabit({ ...newHabit, type: e.target.value })} className="rounded-xl border bg-card px-2.5 py-2.5 text-sm">
-                {types.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
+            </div>
+            <div>
+              <label htmlFor="amalan-cara" className="text-xs font-medium">Cara mengisinya</label>
+              <select id="amalan-cara" value={newHabit.type} onChange={(e) => setNewHabit({ ...newHabit, type: e.target.value })} className="mt-1.5 w-full rounded-xl border bg-card px-2.5 py-2.5 text-sm">
+                {typeOptions.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
                   </option>
                 ))}
               </select>
+              <p className="text-xs text-muted-foreground mt-1.5 leading-5">{selectedType.hint}</p>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <input type="number" min={1} value={newHabit.target} onChange={(e) => setNewHabit({ ...newHabit, target: Number(e.target.value) })} className="rounded-xl border bg-card px-3 py-2.5 text-sm" placeholder="Target" />
-              <input value={newHabit.unit} onChange={(e) => setNewHabit({ ...newHabit, unit: e.target.value })} className="rounded-xl border bg-card px-3 py-2.5 text-sm" placeholder="Unit (halaman/menit)" />
-            </div>
+            {newHabit.type !== "BOOLEAN" && (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label htmlFor="amalan-target" className="text-xs font-medium">Target per hari</label>
+                  <input id="amalan-target" type="number" min={1} value={newHabit.target} onChange={(e) => setNewHabit({ ...newHabit, target: Number(e.target.value) })} className="mt-1.5 w-full rounded-xl border bg-card px-3 py-2.5 text-sm" placeholder="Contoh: 5" />
+                </div>
+                <div>
+                  <label htmlFor="amalan-satuan" className="text-xs font-medium">Satuan</label>
+                  <input id="amalan-satuan" value={newHabit.unit} onChange={(e) => setNewHabit({ ...newHabit, unit: e.target.value })} className="mt-1.5 w-full rounded-xl border bg-card px-3 py-2.5 text-sm" placeholder={selectedType.unitPlaceholder} />
+                </div>
+              </div>
+            )}
             <Button className="w-full rounded-full" onClick={handleAddHabit} disabled={adding || !newHabit.name.trim()}>
-              {adding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-1.5" />} Tambah Amalan
+              {adding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-1.5" />} Simpan Amalan
             </Button>
           </div>
         </Card>
