@@ -126,8 +126,10 @@ export default function OnboardingPage() {
                 <Users className="h-4 w-4" /> Preview anggota
               </div>
               <div className="mt-3 flex -space-x-2">
-                {[1, 2, 3].map((i) => (
-                  <img key={i} src={`https://i.pravatar.cc/100?img=${10 + i}`} alt="avatar" className="h-8 w-8 rounded-full border-2 border-white" />
+                {["Ay", "Ai", "Yu"].map((initial) => (
+                  <div key={initial} className="h-8 w-8 rounded-full bg-[var(--primary-soft)] border-2 border-white flex items-center justify-center text-xs font-bold text-primary">
+                    {initial}
+                  </div>
                 ))}
                 <span className="h-8 w-8 rounded-full bg-muted border-2 border-white flex items-center justify-center text-xs font-medium">+2</span>
               </div>

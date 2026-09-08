@@ -1,13 +1,12 @@
 "use client";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { getDailyProgress } from "@/lib/mock-data";
 import type { Entry } from "@/lib/mock-data";
 import { HabitCard } from "@/components/app/habit-card";
 import { ProgressRing } from "@/components/app/progress-ring";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, ChevronLeft, ChevronRight, StickyNote, WifiOff, Loader2 } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, StickyNote, WifiOff, Loader2, Sparkles } from "lucide-react";
 import { enqueue, syncQueue, clearInvalidQueue } from "@/lib/offline-queue";
 
 type DbHabit = {
@@ -24,6 +23,9 @@ function formatDate(d: Date) {
 }
 function toISO(d: Date) {
   return d.toISOString().slice(0, 10);
+}
+function isToday(d: Date) {
+  return toISO(d) === toISO(new Date());
 }
 
 export default function MutabaahPage() {
@@ -44,68 +46,32 @@ export default function MutabaahPage() {
       const iso = toISO(d);
       try {
         if (!supabase) {
-          // fallback to mock
           const { habits: mockHabits, initialEntries } = await import("@/lib/mock-data");
-          setDbHabits(
-            mockHabits.map((h) => ({
-              id: h.id,
-              name: h.name,
-              category: h.category,
-              type: h.type,
-              target_value: h.target,
-              unit: h.unit ?? null,
-            }))
-          );
+          setDbHabits(mockHabits.map((h) => ({ id: h.id, name: h.name, category: h.category, type: h.type, target_value: h.target, unit: h.unit ?? null })));
           setEntries(initialEntries);
           setLoading(false);
           return;
         }
         const { data: auth } = await supabase.auth.getUser();
         if (!auth.user) {
-          // not logged in — use mock demo
           const { habits: mockHabits, initialEntries } = await import("@/lib/mock-data");
-          setDbHabits(
-            mockHabits.map((h) => ({
-              id: h.id,
-              name: h.name,
-              category: h.category,
-              type: h.type,
-              target_value: h.target,
-              unit: h.unit ?? null,
-            }))
-          );
+          setDbHabits(mockHabits.map((h) => ({ id: h.id, name: h.name, category: h.category, type: h.type, target_value: h.target, unit: h.unit ?? null })));
           setEntries(initialEntries);
           setUserId(null);
           setLoading(false);
           return;
         }
         setUserId(auth.user.id);
-        // get family via membership
-        const { data: membership } = await supabase
-          .from("mutabaah_family_members")
-          .select("family_id")
-          .eq("user_id", auth.user.id)
-          .limit(1)
-          .maybeSingle();
+        const { data: membership } = await supabase.from("mutabaah_family_members").select("family_id").eq("user_id", auth.user.id).limit(1).maybeSingle();
         if (!membership) {
           setDbHabits([]);
           setEntries({});
           setLoading(false);
           return;
         }
-        const { data: habits } = await supabase
-          .from("mutabaah_habits")
-          .select("id,name,category,type,target_value,unit")
-          .eq("family_id", membership.family_id)
-          .eq("is_active", true)
-          .order("sort_order");
+        const { data: habits } = await supabase.from("mutabaah_habits").select("id,name,category,type,target_value,unit").eq("family_id", membership.family_id).eq("is_active", true).order("sort_order");
         setDbHabits(habits ?? []);
-
-        const { data: dbEntries } = await supabase
-          .from("mutabaah_entries")
-          .select("habit_id,value,status,note")
-          .eq("user_id", auth.user.id)
-          .eq("date", iso);
+        const { data: dbEntries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,note").eq("user_id", auth.user.id).eq("date", iso);
         const map: Record<string, Entry> = {};
         (dbEntries ?? []).forEach((e: any) => {
           map[e.habit_id] = { habitId: e.habit_id, value: Number(e.value), status: e.status, note: e.note ?? undefined };
@@ -124,21 +90,13 @@ export default function MutabaahPage() {
     load(date);
   }, [load, date]);
 
-  // sync offline queue when back online — uses real userId
   useEffect(() => {
-    clearInvalidQueue(); // bersihkan queue mock "5" dari demo lama
+    clearInvalidQueue();
     if (!userId) return;
     const doSync = () =>
       syncQueue(async (e) => {
         const { updateMutabaahEntry } = await import("@/lib/actions/habit");
-        await updateMutabaahEntry({
-          habit_id: e.habit_id,
-          user_id: userId,
-          date: e.date,
-          value: e.value,
-          status: e.status as any,
-          note: e.note,
-        });
+        await updateMutabaahEntry({ habit_id: e.habit_id, user_id: userId, date: e.date, value: e.value, status: e.status as any, note: e.note });
       })
         .then(() => setSyncError(null))
         .catch((err: any) => {
@@ -150,13 +108,10 @@ export default function MutabaahPage() {
     return () => window.removeEventListener("online", doSync);
   }, [userId]);
 
-  // derive categories
   const categories = useMemo(() => Array.from(new Set((dbHabits ?? []).map((h) => h.category))), [dbHabits]);
 
-  // daily calc uses real habits
   const daily = useMemo(() => {
     if (!dbHabits || dbHabits.length === 0) return 0;
-    // adapt getDailyProgress to dbHabits
     const progresses = dbHabits.map((h) => {
       const e = entries[h.id];
       if (!e || e.status === "PENDING") return 0;
@@ -171,7 +126,6 @@ export default function MutabaahPage() {
 
   async function persist(habitId: string, value: number, status: Entry["status"]) {
     const iso = toISO(date);
-    // guard mock id
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(habitId)) {
       setSyncError("Data lokal kadaluarsa — refresh halaman.");
       return;
@@ -204,13 +158,9 @@ export default function MutabaahPage() {
     setEntries((prev) => {
       const cur = prev[habitId];
       let next: Entry;
-      if (!cur || cur.status === "PENDING") {
-        next = { habitId, value: habit.type === "BOOLEAN" ? 1 : habit.target_value, status: "COMPLETED" };
-      } else if (cur.status === "COMPLETED") {
-        next = { habitId, value: 0, status: "PENDING" };
-      } else {
-        next = { habitId, value: habit.target_value, status: "COMPLETED" };
-      }
+      if (!cur || cur.status === "PENDING") next = { habitId, value: habit.type === "BOOLEAN" ? 1 : habit.target_value, status: "COMPLETED" };
+      else if (cur.status === "COMPLETED") next = { habitId, value: 0, status: "PENDING" };
+      else next = { habitId, value: habit.target_value, status: "COMPLETED" };
       persist(habitId, next.value, next.status);
       return { ...prev, [habitId]: next };
     });
@@ -231,24 +181,21 @@ export default function MutabaahPage() {
     });
   }
 
-  const filteredHabits = useMemo(() => {
-    if (!dbHabits) return [];
-    return filter === "Semua" ? dbHabits : dbHabits.filter((h) => h.category === filter);
-  }, [dbHabits, filter]);
-
+  const filteredHabits = useMemo(() => (filter === "Semua" ? dbHabits ?? [] : (dbHabits ?? []).filter((h) => h.category === filter)), [dbHabits, filter]);
   const grouped = useMemo(
-    () =>
-      categories
-        .map((cat) => ({ cat, items: filteredHabits.filter((h) => h.category === cat) }))
-        .filter((g) => g.items.length > 0),
+    () => categories.map((cat) => ({ cat, items: filteredHabits.filter((h) => h.category === cat) })).filter((g) => g.items.length > 0),
     [categories, filteredHabits]
   );
 
   if (loading) {
     return (
-      <div className="space-y-6 animate-pulse">
-        <div className="h-20 rounded-2xl bg-muted" />
-        <div className="h-32 rounded-2xl bg-muted" />
+      <div className="space-y-5 animate-pulse">
+        <div className="h-20 rounded-[24px] bg-muted" />
+        <div className="h-36 rounded-[24px] bg-muted" />
+        <div className="flex gap-2">
+          <div className="h-8 w-24 rounded-full bg-muted" />
+          <div className="h-8 w-24 rounded-full bg-muted" />
+        </div>
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-20 rounded-2xl bg-muted" />
@@ -261,17 +208,13 @@ export default function MutabaahPage() {
   if (!dbHabits || dbHabits.length === 0) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-[20px] font-bold">Mutabaah Harian</h1>
-          <p className="text-sm text-muted-foreground">{formatDate(date)}</p>
-        </div>
-        <Card className="p-10 text-center">
-          <div className="mx-auto h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-            <Loader2 className="h-6 w-6 text-muted-foreground" />
+        <Card className="p-8 text-center rounded-[24px] border-dashed">
+          <div className="mx-auto h-14 w-14 rounded-2xl bg-[var(--primary-soft)] flex items-center justify-center">
+            <Sparkles className="h-6 w-6 text-primary" />
           </div>
-          <h3 className="font-semibold mt-4">Belum ada target mutabaah.</h3>
-          <p className="text-sm text-muted-foreground mt-1">Tambahkan target pertama untuk memulai.</p>
-          <Button className="mt-4" onClick={() => (window.location.href = "/keluarga")}>
+          <h3 className="font-bold text-lg mt-4">Belum ada target mutabaah.</h3>
+          <p className="text-sm text-muted-foreground mt-1 max-w-[32ch] mx-auto">Tambahkan target pertama untuk memulai. Cukup 1 langkah.</p>
+          <Button className="mt-5 rounded-full" onClick={() => (window.location.href = "/keluarga")}>
             Tambah Amalan
           </Button>
           {!userId && <p className="text-xs text-muted-foreground mt-3">Login sebagai ayah@mutabaah.demo untuk melihat data seed.</p>}
@@ -282,96 +225,89 @@ export default function MutabaahPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      {/* Header — single source tanggal di nav */}
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-[20px] font-bold tracking-tight">Mutabaah Harian</h1>
-          <p className="text-sm text-muted-foreground">
-            {formatDate(date)} {!userId && "• Mode demo"}
-          </p>
+          <h1 className="text-[26px] font-bold tracking-tight leading-none">Mutabaah Harian</h1>
+          <p className="text-sm text-muted-foreground mt-1">{!userId ? "Mode demo — login untuk simpan" : "Ketuk kartu, progress langsung berubah"}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setDate((d) => new Date(d.getTime() - 86400000))}
-            className="h-9 w-9 rounded-full border bg-card flex items-center justify-center"
-          >
+        <Button variant="secondary" size="sm" className="rounded-full shrink-0" onClick={() => setShowNote(!showNote)}>
+          <StickyNote className="h-4 w-4 mr-1.5" /> Catatan
+        </Button>
+      </div>
+
+      {/* Date nav — single source tanggal */}
+      <div className="flex items-center justify-center">
+        <div className="flex items-center gap-1 rounded-full bg-muted p-1">
+          <button onClick={() => setDate((d) => new Date(d.getTime() - 86400000))} className="h-8 w-8 rounded-full bg-card border flex items-center justify-center" aria-label="Hari sebelumnya">
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <div className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-sm">
-            <CalendarDays className="h-4 w-4 text-muted-foreground" />
-            Hari Ini
+          <div className="px-4 text-sm font-medium flex items-center gap-1.5">
+            <CalendarDays className="h-4 w-4 text-muted-foreground" /> {formatDate(date)}
           </div>
-          <button
-            onClick={() => setDate((d) => new Date(d.getTime() + 86400000))}
-            className="h-9 w-9 rounded-full border bg-card flex items-center justify-center"
-          >
+          <button onClick={() => setDate((d) => new Date(d.getTime() + 86400000))} className="h-8 w-8 rounded-full bg-card border flex items-center justify-center" aria-label="Hari berikutnya">
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
       </div>
 
-      <Card className="p-5 flex flex-col sm:flex-row items-center gap-6">
-        <ProgressRing value={daily} />
-        <div className="flex-1 text-center sm:text-left">
-          <div className="text-sm font-medium text-muted-foreground">Progress hari ini</div>
-          <div className="text-2xl font-bold">
-            {daily}% • {completedCount} dari {dbHabits.length} target
+      {/* Progress hero — hanya ring, tanpa bar duplikat */}
+      <Card className="rounded-[24px] p-6">
+        <div className="flex flex-col sm:flex-row items-center gap-6">
+          <ProgressRing value={daily} size={112} stroke={10} />
+          <div className="flex-1 text-center sm:text-left min-w-0">
+            <div className="text-xs font-semibold tracking-widest uppercase text-muted-foreground">Progress hari ini</div>
+            <div className="text-[28px] font-bold leading-none mt-1">
+              {daily}% <span className="text-sm font-normal text-muted-foreground">• {completedCount}/{dbHabits.length} selesai</span>
+            </div>
+            <p className="text-sm text-muted-foreground mt-2">
+              {daily === 100 ? "Alhamdulillah, semua target selesai! 🌿" : "Tap kartu untuk menyelesaikan — progress langsung berubah."}
+            </p>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            {daily === 100 ? "Alhamdulillah, semua target selesai! 🌿" : `Masih ada ${dbHabits.length - completedCount} target yang belum diisi hari ini.`}
-          </p>
-          <div className="mt-3 h-2 rounded-full bg-muted overflow-hidden max-w-md mx-auto sm:mx-0">
-            <div className="h-full bg-primary transition-all duration-500" style={{ width: `${daily}%` }} />
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setShowNote(!showNote)}>
-            <StickyNote className="h-4 w-4 mr-1.5" /> Catatan
-          </Button>
         </div>
       </Card>
 
       {showNote && (
-        <Card className="p-4">
+        <Card className="rounded-[20px] p-5">
           <label className="text-sm font-medium">Catatan hari ini (opsional)</label>
           <textarea
             placeholder="Tulis refleksi singkat hari ini..."
             className="mt-2 w-full min-h-[72px] rounded-xl border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             onBlur={async (e) => {
-              // save note to first habit entry as example — real app would have per-entry note
               if (!userId || !dbHabits[0]) return;
               const { updateMutabaahEntry } = await import("@/lib/actions/habit");
               const cur = entries[dbHabits[0].id];
-              if (cur)
-                await updateMutabaahEntry({
-                  habit_id: dbHabits[0].id,
-                  user_id: userId,
-                  date: toISO(date),
-                  value: cur.value,
-                  status: cur.status,
-                  note: e.target.value || null,
-                });
+              if (cur) await updateMutabaahEntry({ habit_id: dbHabits[0].id, user_id: userId, date: toISO(date), value: cur.value, status: cur.status, note: e.target.value || null });
             }}
           />
           <p className="text-xs text-muted-foreground mt-2">Catatan privat, tidak dibagikan sebagai analytics.</p>
         </Card>
       )}
 
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-        {["Semua", ...categories].map((c) => (
-          <button
-            key={c}
-            onClick={() => setFilter(c)}
-            className={`shrink-0 rounded-full px-4 py-2 text-xs font-medium border transition-colors ${filter === c ? "bg-primary text-white border-primary" : "bg-card hover:bg-muted"}`}
-          >
-            {c}
-          </button>
-        ))}
+      {/* Category chips — tanpa count ganda */}
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none -mx-4 px-4 lg:mx-0 lg:px-0">
+        {["Semua", ...categories].map((c) => {
+          const active = filter === c;
+          return (
+            <button
+              key={c}
+              onClick={() => setFilter(c)}
+              className={`shrink-0 rounded-full px-4 py-2 text-xs font-medium border transition-colors ${active ? "bg-primary text-white border-primary shadow-sm" : "bg-card hover:bg-muted"}`}
+            >
+              {c}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="space-y-6">
+      {/* Grouped habits — count hanya di header */}
+      <div className="space-y-7">
         {grouped.map((g) => (
           <div key={g.cat}>
-            <h3 className="text-[11px] font-semibold tracking-widest uppercase text-muted-foreground mb-3">{g.cat}</h3>
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="text-[11px] font-semibold tracking-widest uppercase text-muted-foreground">{g.cat}</h3>
+              <span className="text-[11px] bg-muted px-2 py-0.5 rounded-full font-medium">{g.items.length}</span>
+            </div>
             <div className="grid gap-3">
               {g.items.map((h) => (
                 <HabitCard
@@ -389,13 +325,10 @@ export default function MutabaahPage() {
 
       {syncError ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-center text-sm text-amber-800 flex items-center justify-center gap-2">
-          <WifiOff className="h-4 w-4" /> {syncError} <span className="font-medium">last-write-wins</span>
+          <WifiOff className="h-4 w-4" /> {syncError}
         </div>
       ) : (
-        <div className="rounded-2xl border border-dashed p-4 text-center text-sm text-muted-foreground">
-          {userId ? "Perubahan tersinkron ke DB." : "Mode demo — login untuk simpan permanen."}{" "}
-          <span className="font-medium text-foreground">last-write-wins</span>
-        </div>
+        <div className="text-center text-xs text-muted-foreground">{userId ? "Tersinkron otomatis" : "Mode demo — login untuk simpan permanen"}</div>
       )}
     </div>
   );

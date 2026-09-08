@@ -1,11 +1,9 @@
-// Mutabaah PWA SW — installable + offline
-const CACHE = "mutabaah-v2";
-const PRECACHE = ["/", "/beranda", "/mutabaah", "/manifest.json", "/icon-192.png", "/icon-512.png"];
+// Mutabaah PWA SW — fix stale chunks (Loader2 error)
+const CACHE = "mutabaah-v3";
+const PRECACHE = ["/", "/manifest.json", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting())
-  );
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (e) => {
@@ -17,11 +15,15 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   const url = new URL(req.url);
-
-  // Skip non-GET and cross-origin API (supabase)
   if (req.method !== "GET" || url.origin !== self.location.origin) return;
 
-  // Navigation: network-first, fallback to cache, then offline
+  // Jangan cache _next chunks — selalu network (hindari stale Loader2)
+  if (url.pathname.startsWith("/_next/")) {
+    e.respondWith(fetch(req).catch(() => caches.match(req)));
+    return;
+  }
+
+  // Navigasi: network-first
   if (req.mode === "navigate") {
     e.respondWith(
       fetch(req)
@@ -35,8 +37,8 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Assets: cache-first
-  if (url.pathname.match(/\.(js|css|png|svg|woff2|json)$/)) {
+  // Images/fonts/manifest: cache-first
+  if (url.pathname.match(/\.(png|svg|woff2|json)$/) && !url.pathname.startsWith("/_next/")) {
     e.respondWith(
       caches.match(req).then((cached) => {
         if (cached) return cached;
@@ -52,16 +54,9 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Default: network-first with cache fallback
-  e.respondWith(
-    fetch(req)
-      .then((res) => {
-        if (res.ok) {
-          const clone = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, clone));
-        }
-        return res;
-      })
-      .catch(() => caches.match(req))
-  );
+  // Lainnya: network-first
+  e.respondWith(fetch(req).then((res) => {
+    if (res.ok) { const clone = res.clone(); caches.open(CACHE).then((c) => c.put(req, clone)); }
+    return res;
+  }).catch(() => caches.match(req)));
 });
