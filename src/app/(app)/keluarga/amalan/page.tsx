@@ -2,8 +2,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, Loader2, Check, BookOpen, Heart, Target, ChevronLeft, X } from "lucide-react";
+import { Plus, Trash2, Loader2, Check, BookOpen, Heart, Target, ChevronLeft, ChevronRight, Pencil, X } from "lucide-react";
 import Link from "next/link";
+import { Sheet } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";
 
 type HabitRow = { id: string; name: string; category: string; type: string; target_value: number; unit: string | null; is_active: boolean };
@@ -68,6 +69,10 @@ export default function AmalanPage() {
   const [habitOpen, setHabitOpen] = useState(false);
   const [newHabit, setNewHabit] = useState({ name: "", category: "Ibadah Wajib", type: "BOOLEAN", target: 1, unit: "" });
   const [adding, setAdding] = useState(false);
+  const [manageHabit, setManageHabit] = useState<HabitRow | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", category: "Ibadah Wajib", target: 1, unit: "", is_active: true });
+  const [savingEdit, setSavingEdit] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = async () => {
@@ -115,9 +120,47 @@ export default function AmalanPage() {
 
   const handleDeleteHabit = async (id: string, name: string) => {
     if (!confirm(`Hapus "${name}"? Catatan yang sudah terisi tetap tersimpan.`)) return;
-    const { deleteHabit } = await import("@/lib/actions/habit");
-    await deleteHabit(id);
-    setHabits((prev) => prev.filter((h) => h.id !== id));
+    try {
+      const { deleteHabit } = await import("@/lib/actions/habit");
+      await deleteHabit(id);
+      setHabits((prev) => prev.filter((h) => h.id !== id));
+      setManageHabit(null);
+      setMsg(`"${name}" dihapus.`);
+    } catch (e: any) { setMsg(e.message); }
+  };
+
+  const handleToggleActive = async (h: HabitRow) => {
+    try {
+      const { updateHabit } = await import("@/lib/actions/habit");
+      await updateHabit(h.id, { is_active: !h.is_active });
+      const next = { ...h, is_active: !h.is_active };
+      setHabits((prev) => prev.map((x) => (x.id === h.id ? next : x)));
+      setManageHabit((prev) => (prev?.id === h.id ? next : prev));
+      setMsg(next.is_active ? `"${h.name}" ditampilkan lagi di mutabaah harian.` : `"${h.name}" dijeda — tidak muncul di mutabaah harian.`);
+    } catch (e: any) { setMsg(e.message); }
+  };
+
+  const openEdit = (h: HabitRow) => {
+    setEditForm({ name: h.name, category: h.category, target: Number(h.target_value) || 1, unit: h.unit ?? "", is_active: h.is_active });
+    setEditing(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!manageHabit || !editForm.name.trim()) return;
+    setSavingEdit(true);
+    try {
+      const { updateHabit } = await import("@/lib/actions/habit");
+      const patch: Record<string, unknown> = { name: editForm.name.trim(), category: editForm.category, is_active: editForm.is_active };
+      if (manageHabit.type !== "BOOLEAN") {
+        patch.target_value = Number(editForm.target) || 1;
+        patch.unit = editForm.unit.trim() || null;
+      }
+      await updateHabit(manageHabit.id, patch as any);
+      setHabits((prev) => prev.map((x) => (x.id === manageHabit.id ? { ...x, ...patch, target_value: Number((patch as any).target_value ?? x.target_value), unit: ((patch as any).unit ?? x.unit) as string | null } : x)));
+      setManageHabit((prev) => (prev ? { ...prev, name: editForm.name.trim(), category: editForm.category, target_value: manageHabit.type !== "BOOLEAN" ? Number(editForm.target) || 1 : prev.target_value, unit: manageHabit.type !== "BOOLEAN" ? editForm.unit.trim() || null : prev.unit, is_active: editForm.is_active } : prev));
+      setEditing(false);
+      setMsg(`Perubahan "${editForm.name.trim()}" tersimpan.`);
+    } catch (e: any) { setMsg(e.message); } finally { setSavingEdit(false); }
   };
 
   const handleApplyTemplate = async (key: string) => {
@@ -181,7 +224,12 @@ export default function AmalanPage() {
           <>
             <div className="space-y-2">
               {habits.map((h) => (
-                <div key={h.id} className={`flex items-center gap-3 rounded-2xl border p-3 transition-colors ${!h.is_active ? "opacity-60 bg-muted/30" : "hover:border-primary/15"}`}>
+                <button
+                  key={h.id}
+                  onClick={() => { setManageHabit(h); setEditing(false); }}
+                  aria-label={`Kelola ${h.name}`}
+                  className={`w-full flex items-center gap-3 rounded-2xl border p-3 text-left transition-colors min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${!h.is_active ? "opacity-70 bg-muted/30" : "hover:border-primary/20 hover:bg-muted/40"}`}
+                >
                   <div className={`h-9 w-9 rounded-xl flex items-center justify-center shrink-0 ${h.category === "Ibadah Wajib" ? "bg-emerald-50 text-emerald-600" : h.category === "Al-Qur'an" ? "bg-sky-50 text-sky-600" : "bg-muted text-muted-foreground"}`}>
                     {h.category === "Ibadah Wajib" ? <Heart className="h-4 w-4" /> : h.category === "Al-Qur'an" ? <BookOpen className="h-4 w-4" /> : <Target className="h-4 w-4" />}
                   </div>
@@ -189,18 +237,12 @@ export default function AmalanPage() {
                     <div className="text-sm font-medium truncate flex items-center gap-1.5">
                       {h.name} {!h.is_active && <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full">Dijeda</span>}
                     </div>
-                    <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-                      <span className={`h-1.5 w-1.5 rounded-full ${h.is_active ? "bg-primary" : "bg-muted-foreground"}`} /> {h.category} • {typeLabel(h.type)}{h.type !== "BOOLEAN" ? ` • ${habitTargetText(h)}` : ""}
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 truncate">
+                      <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${h.is_active ? "bg-primary" : "bg-muted-foreground"}`} /> {h.category} • {typeLabel(h.type)}{h.type !== "BOOLEAN" ? ` • ${habitTargetText(h)}` : ""}
                     </div>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer" title={h.is_active ? "Jeda amalan ini" : "Tampilkan lagi amalan ini"}>
-                    <input type="checkbox" checked={h.is_active} aria-label={h.is_active ? `Jeda ${h.name}` : `Tampilkan lagi ${h.name}`} onChange={async (e) => { const { updateHabit } = await import("@/lib/actions/habit"); await updateHabit(h.id, { is_active: e.target.checked }); setHabits((prev) => prev.map((x) => (x.id === h.id ? { ...x, is_active: e.target.checked } : x))); }} className="sr-only peer" />
-                    <div className="w-9 h-5 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-                  </label>
-                  <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0" onClick={() => handleDeleteHabit(h.id, h.name)} aria-label={`Hapus ${h.name}`}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                </button>
               ))}
             </div>
             <details className="mt-4 rounded-2xl border p-4">
@@ -222,11 +264,97 @@ export default function AmalanPage() {
         )}
       </Card>
 
+      {manageHabit && (
+        <Sheet label={`Kelola ${manageHabit.name}`} onClose={() => setManageHabit(null)}>
+          <div className="flex items-center justify-between gap-2">
+              <h3 className="font-bold truncate">{editing ? "Ubah amalan" : manageHabit.name}</h3>
+              <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0" onClick={() => setManageHabit(null)} aria-label="Tutup">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            {!editing ? (
+              <>
+                <p className="text-xs text-muted-foreground mt-1">{manageHabit.category} • {typeLabel(manageHabit.type)}{manageHabit.type !== "BOOLEAN" ? ` • ${habitTargetText(manageHabit)}` : ""} • {manageHabit.is_active ? "Aktif di mutabaah harian" : "Sedang dijeda"}</p>
+                <div className="mt-5 space-y-2">
+                  <button
+                    onClick={() => openEdit(manageHabit)}
+                    className="w-full flex items-center gap-3 rounded-2xl border p-3.5 text-left hover:border-primary/20 transition-colors min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Pencil className="h-4 w-4 text-primary shrink-0" />
+                    <span>
+                      <span className="block text-sm font-medium">Ubah nama & target</span>
+                      <span className="block text-xs text-muted-foreground mt-0.5">Nama, kelompok, target, dan satuan</span>
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => handleToggleActive(manageHabit)}
+                    className="w-full flex items-center justify-between gap-3 rounded-2xl border p-3.5 text-left hover:border-primary/20 transition-colors min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <span>
+                      <span className="block text-sm font-medium">{manageHabit.is_active ? "Jeda amalan ini" : "Tampilkan lagi"}</span>
+                      <span className="block text-xs text-muted-foreground mt-0.5">{manageHabit.is_active ? "Disembunyikan dari mutabaah harian, riwayat tetap ada." : "Muncul lagi di mutabaah harian."}</span>
+                    </span>
+                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ${manageHabit.is_active ? "bg-[var(--primary-soft)] text-primary" : "bg-muted text-muted-foreground"}`}>
+                      {manageHabit.is_active ? "Aktif" : "Dijeda"}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => handleDeleteHabit(manageHabit.id, manageHabit.name)}
+                    className="w-full flex items-center gap-3 rounded-2xl border border-red-200 p-3.5 text-left text-red-700 hover:bg-red-50 transition-colors min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Trash2 className="h-4 w-4 shrink-0" />
+                    <span>
+                      <span className="block text-sm font-medium">Hapus amalan</span>
+                      <span className="block text-xs opacity-80 mt-0.5">Catatan yang sudah terisi tetap tersimpan.</span>
+                    </span>
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label htmlFor="ubah-nama" className="text-xs font-medium">Nama amalan</label>
+                  <input id="ubah-nama" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="mt-1.5 w-full rounded-xl border bg-card px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+                </div>
+                <div>
+                  <label htmlFor="ubah-kelompok" className="text-xs font-medium">Kelompok</label>
+                  <select id="ubah-kelompok" value={editForm.category} onChange={(e) => setEditForm({ ...editForm, category: e.target.value })} className="mt-1.5 w-full rounded-xl border bg-card px-2.5 py-2.5 text-sm">
+                    {categories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="rounded-xl bg-muted/60 px-3 py-2.5 text-xs text-muted-foreground">
+                  Cara mengisinya: <span className="font-medium text-foreground">{typeLabel(manageHabit.type)}</span> — dikunci agar riwayat tetap valid.
+                </div>
+                {manageHabit.type !== "BOOLEAN" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label htmlFor="ubah-target" className="text-xs font-medium">Target per hari</label>
+                      <input id="ubah-target" type="number" min={1} value={editForm.target} onChange={(e) => setEditForm({ ...editForm, target: Number(e.target.value) })} className="mt-1.5 w-full rounded-xl border bg-card px-3 py-2.5 text-sm" />
+                    </div>
+                    <div>
+                      <label htmlFor="ubah-satuan" className="text-xs font-medium">Satuan</label>
+                      <input id="ubah-satuan" value={editForm.unit} onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })} className="mt-1.5 w-full rounded-xl border bg-card px-3 py-2.5 text-sm" placeholder="halaman / menit" />
+                    </div>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button variant="secondary" className="flex-1 rounded-full min-h-[44px]" onClick={() => setEditing(false)}>
+                    Kembali
+                  </Button>
+                  <Button className="flex-1 rounded-full min-h-[44px]" onClick={handleSaveEdit} disabled={savingEdit || !editForm.name.trim()}>
+                    {savingEdit ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} Simpan
+                  </Button>
+                </div>
+              </div>
+            )}
+        </Sheet>
+      )}
+
       {habitOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Buat amalan baru">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setHabitOpen(false)} />
-          <div className="relative w-full max-w-[440px] rounded-t-[24px] sm:rounded-[24px] bg-card p-6 shadow-card max-h-[85vh] overflow-auto">
-            <div className="flex items-center justify-between">
+        <Sheet label="Buat amalan baru" onClose={() => setHabitOpen(false)}>
+          <div className="flex items-center justify-between">
               <h3 className="font-bold">Buat amalan baru</h3>
               <Button variant="ghost" size="icon" className="h-11 w-11" onClick={() => setHabitOpen(false)} aria-label="Tutup">
                 <X className="h-4 w-4" />
@@ -270,8 +398,7 @@ export default function AmalanPage() {
                 {adding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-1.5" />} Simpan Amalan
               </Button>
             </div>
-          </div>
-        </div>
+        </Sheet>
       )}
     </div>
   );

@@ -59,6 +59,14 @@ body {
   }
 }
 
+@keyframes sheet-up {
+  from { transform: translateY(28px); opacity: 0.5; }
+  to { transform: none; opacity: 1; }
+}
+.animate-sheet-up {
+  animation: sheet-up 0.22s ease-out;
+}
+
 /* Notion-like soft shadow */
 .shadow-soft {
   box-shadow:

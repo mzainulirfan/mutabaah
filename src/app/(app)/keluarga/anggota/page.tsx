@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link2, Trash2, Copy, Check, Loader2, ChevronLeft, X } from "lucide-react";
 import Link from "next/link";
+import { Sheet } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";
 
 const roleLabel: Record<string, string> = { OWNER: "Pemilik", PARENT: "Orang tua", MEMBER: "Anggota" };
@@ -124,33 +125,30 @@ export default function AnggotaPage() {
       <p className="text-xs text-muted-foreground leading-5">Anggota baru cukup buka link undangan lalu masuk — langsung tergabung, tanpa kode.</p>
 
       {inviteOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Undang anggota">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setInviteOpen(false)} />
-          <div className="relative w-full max-w-[440px] rounded-t-[24px] sm:rounded-[24px] bg-card p-6 shadow-card max-h-[85vh] overflow-auto">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold">Undang anggota</h3>
-              <Button variant="ghost" size="icon" className="h-11 w-11" onClick={() => setInviteOpen(false)} aria-label="Tutup">
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <p className="text-sm text-muted-foreground mt-1 leading-6">Buat link, bagikan ke keluarga. Mereka cukup buka link lalu masuk — langsung tergabung. Link berlaku 7 hari.</p>
-            {!inviteUrl ? (
-              <Button className="w-full rounded-full mt-5 min-h-[44px]" onClick={handleCreateInvite} disabled={inviteLoading}>
-                {inviteLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Link2 className="h-4 w-4 mr-1.5" />} Buat link undangan
-              </Button>
-            ) : (
-              <div className="mt-5 space-y-3">
-                <div className="rounded-xl border bg-muted px-3 py-2.5 text-xs truncate font-mono">{inviteUrl}</div>
-                <Button className="w-full rounded-full min-h-[44px]" onClick={handleCopy}>
-                  <Copy className="h-4 w-4 mr-1.5" /> {copied ? "Tersalin ✓" : "Salin link"}
-                </Button>
-                <button onClick={handleCreateInvite} disabled={inviteLoading} className="w-full text-xs text-muted-foreground underline underline-offset-2">
-                  Buat link baru
-                </button>
-              </div>
-            )}
+        <Sheet label="Undang anggota" onClose={() => setInviteOpen(false)}>
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold">Undang anggota</h3>
+            <Button variant="ghost" size="icon" className="h-11 w-11" onClick={() => setInviteOpen(false)} aria-label="Tutup">
+              <X className="h-4 w-4" />
+            </Button>
           </div>
-        </div>
+          <p className="text-sm text-muted-foreground mt-1 leading-6">Buat link, bagikan ke keluarga. Mereka cukup buka link lalu masuk — langsung tergabung. Link berlaku 7 hari.</p>
+          {!inviteUrl ? (
+            <Button className="w-full rounded-full mt-5 min-h-[44px]" onClick={handleCreateInvite} disabled={inviteLoading}>
+              {inviteLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Link2 className="h-4 w-4 mr-1.5" />} Buat link undangan
+            </Button>
+          ) : (
+            <div className="mt-5 space-y-3">
+              <div className="rounded-xl border bg-muted px-3 py-2.5 text-xs truncate font-mono">{inviteUrl}</div>
+              <Button className="w-full rounded-full min-h-[44px]" onClick={handleCopy}>
+                <Copy className="h-4 w-4 mr-1.5" /> {copied ? "Tersalin ✓" : "Salin link"}
+              </Button>
+              <button onClick={handleCreateInvite} disabled={inviteLoading} className="w-full text-xs text-muted-foreground underline underline-offset-2">
+                Buat link baru
+              </button>
+            </div>
+          )}
+        </Sheet>
       )}
     </div>
   );
