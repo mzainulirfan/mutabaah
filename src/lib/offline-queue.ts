@@ -2,7 +2,7 @@
 // Simple localStorage queue for mutabaah entries — last-write-wins per PRD §31
 const KEY = "mutabaah:queue";
 
-export type QueuedEntry = { habit_id: string; value: number; status: string; date: string; note?: string; ts: number };
+export type QueuedEntry = { habit_id: string; value: number; status: string; date: string; note?: string; context?: "SENDIRI" | "BERJAMAAH" | null; ts: number };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

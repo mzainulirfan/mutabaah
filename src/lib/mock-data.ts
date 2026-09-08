@@ -20,11 +20,14 @@ export type Habit = {
 
 export type EntryStatus = "PENDING" | "PARTIAL" | "COMPLETED" | "SKIPPED";
 
+export type SholatContext = "SENDIRI" | "BERJAMAAH";
+
 export type Entry = {
   habitId: string;
   value: number;
   status: EntryStatus;
   note?: string;
+  context?: SholatContext | null;
 };
 
 export const habits: Habit[] = [

@@ -79,7 +79,7 @@ export default function BerandaPage() {
         supabase.from("mutabaah_entries").select("user_id,habit_id,value,status").in("user_id", userIds).eq("date", today),
         supabase.from("mutabaah_entries").select("user_id,habit_id,value,status").in("user_id", userIds).eq("date", yesterday),
         supabase.from("mutabaah_entries").select("user_id,date,value,habit_id,status").in("user_id", userIds).gte("date", thirtyAgo),
-        supabase.from("mutabaah_entries").select("user_id,habit_id,status,completed_at").in("user_id", userIds).order("completed_at", { ascending: false }).limit(5),
+        supabase.from("mutabaah_entries").select("user_id,habit_id,status,context,completed_at").in("user_id", userIds).order("completed_at", { ascending: false }).limit(5),
       ]);
       const profileMap = new Map((profiles ?? []).map((p: any) => [p.id, p.name]));
       const todayMap = new Map((todayEntries ?? []).map((e: any) => [`${e.user_id}:${e.habit_id}`, e]));
@@ -133,7 +133,7 @@ export default function BerandaPage() {
         const name = (profileMap.get(r.user_id) as string) ?? "Anggota keluarga";
         const habitName = habitNameMap.get(r.habit_id) ?? "Mutabaah";
         const time = r.completed_at ? new Date(r.completed_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "";
-        if (r.status === "COMPLETED") return { name, act: `${habitName} selesai, alhamdulillah`, time, type: "completed" as const };
+        if (r.status === "COMPLETED") return { name, act: r.context === "BERJAMAAH" ? `${habitName} — berjamaah di masjid, alhamdulillah` : `${habitName} selesai, alhamdulillah`, time, type: "completed" as const };
         if (r.status === "PARTIAL") return { name, act: `${habitName} sebagian terisi`, time, type: "pending" as const };
         return { name, act: `${habitName} menunggu diisi`, time, type: "pending" as const };
       });

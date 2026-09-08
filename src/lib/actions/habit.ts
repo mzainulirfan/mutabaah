@@ -65,9 +65,13 @@ export async function updateMutabaahEntry(input: {
   value: number;
   status: "PENDING" | "PARTIAL" | "COMPLETED" | "SKIPPED";
   note?: string | null;
+  context?: "SENDIRI" | "BERJAMAAH" | null;
 }) {
   if (!isUUID(input.habit_id)) throw new Error(`Invalid habit_id "${input.habit_id}" — expected uuid (habit belum sync, refresh halaman)`);
   if (!isUUID(input.user_id)) throw new Error(`Invalid user_id "${input.user_id}"`);
+  if (input.context !== undefined && input.context !== null && input.context !== "SENDIRI" && input.context !== "BERJAMAAH") {
+    throw new Error("Invalid context — pilih Sendiri atau Berjamaah");
+  }
   const supabase = await createClient();
   if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
   const { data: auth } = await supabase.auth.getUser();
@@ -80,6 +84,7 @@ export async function updateMutabaahEntry(input: {
     value: input.value,
     status: input.status,
     note: input.note ?? null,
+    context: input.status === "PENDING" ? null : (input.context ?? null),
     completed_at: input.status === "COMPLETED" ? new Date().toISOString() : null,
   };
   const { data, error } = await supabase

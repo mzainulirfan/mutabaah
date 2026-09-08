@@ -6,7 +6,7 @@ import { HabitCard } from "@/components/app/habit-card";
 import { ProgressRing } from "@/components/app/progress-ring";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, ChevronLeft, ChevronRight, StickyNote, WifiOff, Loader2, Sparkles } from "lucide-react";
+import { StickyNote, WifiOff, Sparkles } from "lucide-react";
 import { enqueue, syncQueue, clearInvalidQueue } from "@/lib/offline-queue";
 
 type DbHabit = {
@@ -18,22 +18,20 @@ type DbHabit = {
   unit: string | null;
 };
 
-function formatDate(d: Date) {
-  return d.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-}
 function toISO(d: Date) {
   return d.toISOString().slice(0, 10);
-}
-function isToday(d: Date) {
-  return toISO(d) === toISO(new Date());
 }
 
 export default function MutabaahPage() {
   const [dbHabits, setDbHabits] = useState<DbHabit[] | null>(null);
   const [entries, setEntries] = useState<Record<string, Entry>>({});
-  const [date, setDate] = useState(new Date());
+  const [date] = useState(new Date());
   const [filter, setFilter] = useState<string>("Semua");
   const [showNote, setShowNote] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const [noteLoaded, setNoteLoaded] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteSaved, setNoteSaved] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
@@ -49,6 +47,9 @@ export default function MutabaahPage() {
           const { habits: mockHabits, initialEntries } = await import("@/lib/mock-data");
           setDbHabits(mockHabits.map((h) => ({ id: h.id, name: h.name, category: h.category, type: h.type, target_value: h.target, unit: h.unit ?? null })));
           setEntries(initialEntries);
+          setNoteText("");
+          setNoteLoaded("");
+          setNoteSaved(false);
           setLoading(false);
           return;
         }
@@ -57,6 +58,9 @@ export default function MutabaahPage() {
           const { habits: mockHabits, initialEntries } = await import("@/lib/mock-data");
           setDbHabits(mockHabits.map((h) => ({ id: h.id, name: h.name, category: h.category, type: h.type, target_value: h.target, unit: h.unit ?? null })));
           setEntries(initialEntries);
+          setNoteText("");
+          setNoteLoaded("");
+          setNoteSaved(false);
           setUserId(null);
           setLoading(false);
           return;
@@ -71,12 +75,16 @@ export default function MutabaahPage() {
         }
         const { data: habits } = await supabase.from("mutabaah_habits").select("id,name,category,type,target_value,unit").eq("family_id", membership.family_id).eq("is_active", true).order("sort_order");
         setDbHabits(habits ?? []);
-        const { data: dbEntries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,note").eq("user_id", auth.user.id).eq("date", iso);
+        const { data: dbEntries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,note,context").eq("user_id", auth.user.id).eq("date", iso);
         const map: Record<string, Entry> = {};
         (dbEntries ?? []).forEach((e: any) => {
-          map[e.habit_id] = { habitId: e.habit_id, value: Number(e.value), status: e.status, note: e.note ?? undefined };
+          map[e.habit_id] = { habitId: e.habit_id, value: Number(e.value), status: e.status, note: e.note ?? undefined, context: e.context ?? null };
         });
         setEntries(map);
+        const saved = Object.values(map).map((e) => e.note?.trim()).find((n) => n) ?? "";
+        setNoteText(saved);
+        setNoteLoaded(saved);
+        setNoteSaved(!!saved);
       } catch (e: any) {
         setSyncError(e.message ?? "Gagal memuat");
       } finally {
@@ -96,7 +104,7 @@ export default function MutabaahPage() {
     const doSync = () =>
       syncQueue(async (e) => {
         const { updateMutabaahEntry } = await import("@/lib/actions/habit");
-        await updateMutabaahEntry({ habit_id: e.habit_id, user_id: userId, date: e.date, value: e.value, status: e.status as any, note: e.note });
+        await updateMutabaahEntry({ habit_id: e.habit_id, user_id: userId, date: e.date, value: e.value, status: e.status as any, note: e.note, context: e.context ?? null });
       })
         .then(() => setSyncError(null))
         .catch((err: any) => {
@@ -124,46 +132,81 @@ export default function MutabaahPage() {
 
   const completedCount = useMemo(() => Object.values(entries).filter((e) => e.status === "COMPLETED").length, [entries]);
 
-  async function persist(habitId: string, value: number, status: Entry["status"]) {
+  async function persist(habitId: string, value: number, status: Entry["status"], context?: "SENDIRI" | "BERJAMAAH" | null) {
     const iso = toISO(date);
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(habitId)) {
-      setSyncError("Data lokal kadaluarsa — refresh halaman.");
+      setSyncError("Sepertinya datanya sudah lama — muat ulang halaman sekali saja, ya.");
       return;
     }
-    const payload = { habit_id: habitId, value, status, date: iso };
+    const payload = { habit_id: habitId, value, status, date: iso, context: context ?? null };
     if (!userId) return;
     if (!navigator.onLine) {
       enqueue(payload);
-      setSyncError("Offline — perubahan akan disinkronkan.");
+      setSyncError("Kamu sedang offline — perubahan akan tersimpan otomatis saat online kembali.");
       return;
     }
     try {
       const { updateMutabaahEntry } = await import("@/lib/actions/habit");
-      await updateMutabaahEntry({ habit_id: habitId, user_id: userId, date: iso, value, status });
+      await updateMutabaahEntry({ habit_id: habitId, user_id: userId, date: iso, value, status, context: context ?? null });
       setSyncError(null);
     } catch (e: any) {
       if (e?.message?.includes("Invalid habit_id")) {
         clearInvalidQueue();
-        setSyncError("Data lama dibersihkan — refresh halaman.");
+        setSyncError("Ada data lama yang sudah dibersihkan — muat ulang halaman sekali saja.");
         return;
       }
       enqueue(payload);
-      setSyncError("Perubahan belum tersimpan. Coba lagi.");
+      setSyncError("Perubahan belum tersimpan — akan dicoba lagi otomatis.");
+    }
+  }
+
+  async function saveNote(text: string) {
+    const trimmed = text.trim();
+    if (!userId || !dbHabits?.length || trimmed === noteLoaded.trim()) return;
+    setNoteSaving(true);
+    try {
+      const { updateMutabaahEntry } = await import("@/lib/actions/habit");
+      // Simpan pada entri yang sudah ada; kalau belum ada, buat entri baru (PENDING + catatan)
+      const target = dbHabits.find((h) => entries[h.id]) ?? dbHabits[0];
+      const cur = entries[target.id];
+      const value = cur?.value ?? 0;
+      const status = cur?.status ?? "PENDING";
+      const context = cur?.context ?? null;
+      await updateMutabaahEntry({ habit_id: target.id, user_id: userId, date: toISO(date), value, status, note: trimmed || null, context });
+      setEntries((prev) => ({ ...prev, [target.id]: { habitId: target.id, value, status, note: trimmed || undefined, context } }));
+      setNoteLoaded(trimmed);
+      setNoteSaved(true);
+      setSyncError(null);
+    } catch {
+      setSyncError("Refleksi belum tersimpan — coba lagi.");
+    } finally {
+      setNoteSaving(false);
     }
   }
 
   function handleToggle(habitId: string) {
     const habit = dbHabits?.find((h) => h.id === habitId);
     if (!habit) return;
+    // Sholat wajib yang belum selesai: wajib pilih Sendiri/Berjamaah dulu (bukan langsung selesai)
+    if (habit.category === "Ibadah Wajib" && (!entries[habitId] || entries[habitId].status !== "COMPLETED")) return;
     setEntries((prev) => {
       const cur = prev[habitId];
       let next: Entry;
       if (!cur || cur.status === "PENDING") next = { habitId, value: habit.type === "BOOLEAN" ? 1 : habit.target_value, status: "COMPLETED" };
       else if (cur.status === "COMPLETED") next = { habitId, value: 0, status: "PENDING" };
       else next = { habitId, value: habit.target_value, status: "COMPLETED" };
-      persist(habitId, next.value, next.status);
+      persist(habitId, next.value, next.status, null);
       return { ...prev, [habitId]: next };
     });
+  }
+
+  function handleContext(habitId: string, ctx: "SENDIRI" | "BERJAMAAH") {
+    const habit = dbHabits?.find((h) => h.id === habitId);
+    if (!habit) return;
+    const target = habit.type === "BOOLEAN" ? 1 : habit.target_value;
+    const next: Entry = { habitId, value: target, status: "COMPLETED", context: ctx };
+    setEntries((prev) => ({ ...prev, [habitId]: next }));
+    persist(habitId, target, "COMPLETED", ctx);
   }
 
   function handleUpdate(habitId: string, delta: number) {
@@ -189,16 +232,17 @@ export default function MutabaahPage() {
 
   if (loading) {
     return (
-      <div className="space-y-5 animate-pulse">
-        <div className="h-20 rounded-[24px] bg-muted" />
-        <div className="h-36 rounded-[24px] bg-muted" />
+      <div className="mx-auto max-w-[720px] space-y-4 animate-pulse" aria-busy="true" aria-label="Memuat mutabaah">
+        <div className="h-16 rounded-[20px] bg-muted" />
+        <div className="h-[104px] rounded-[20px] bg-muted" />
         <div className="flex gap-2">
-          <div className="h-8 w-24 rounded-full bg-muted" />
-          <div className="h-8 w-24 rounded-full bg-muted" />
+          <div className="h-9 w-24 rounded-full bg-muted" />
+          <div className="h-9 w-24 rounded-full bg-muted" />
+          <div className="h-9 w-24 rounded-full bg-muted" />
         </div>
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-20 rounded-2xl bg-muted" />
+            <div key={i} className="h-[76px] rounded-[20px] bg-muted" />
           ))}
         </div>
       </div>
@@ -212,123 +256,157 @@ export default function MutabaahPage() {
           <div className="mx-auto h-14 w-14 rounded-2xl bg-[var(--primary-soft)] flex items-center justify-center">
             <Sparkles className="h-6 w-6 text-primary" />
           </div>
-          <h3 className="font-bold text-lg mt-4">Belum ada target mutabaah.</h3>
-          <p className="text-sm text-muted-foreground mt-1 max-w-[32ch] mx-auto">Tambahkan target pertama untuk memulai. Cukup 1 langkah.</p>
+          <h3 className="font-bold text-lg mt-4">Belum ada target hari ini</h3>
+          <p className="text-sm text-muted-foreground mt-1 max-w-[36ch] mx-auto leading-6">Mulai dari satu amalan kecil dulu. Nanti bisa ditambah pelan-pelan bersama keluarga.</p>
           <Button className="mt-5 rounded-full" onClick={() => (window.location.href = "/keluarga")}>
-            Tambah Amalan
+            Buat Target Pertama
           </Button>
-          {!userId && <p className="text-xs text-muted-foreground mt-3">Login sebagai ayah@mutabaah.demo untuk melihat data seed.</p>}
         </Card>
       </div>
     );
   }
 
+
+
   return (
-    <div className="space-y-6">
-      {/* Header — single source tanggal di nav */}
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-[26px] font-bold tracking-tight leading-none">Mutabaah Harian</h1>
-          <p className="text-sm text-muted-foreground mt-1">{!userId ? "Mode demo — login untuk simpan" : "Ketuk kartu, progress langsung berubah"}</p>
+    <div className="mx-auto max-w-[720px] space-y-5">
+      {/* Judul — tanggal sebagai eyebrow, status satu kalimat */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground" aria-live="polite">
+            {date.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
+          </p>
+          <h1 className="text-[26px] font-bold tracking-tight leading-tight mt-1">Mutabaah Hari Ini</h1>
+          <p className="text-sm text-muted-foreground mt-1 leading-6">
+            {daily === 100
+              ? "Alhamdulillah, bagian hari ini sudah selesai."
+              : completedCount === 0
+                ? "Hari masih baru — mulai dari satu ketukan kecil."
+                : `Sudah ${completedCount} terisi, tinggal ${dbHabits.length - completedCount} lagi.`}
+          </p>
         </div>
-        <Button variant="secondary" size="sm" className="rounded-full shrink-0" onClick={() => setShowNote(!showNote)}>
-          <StickyNote className="h-4 w-4 mr-1.5" /> Catatan
+        <Button
+          variant={showNote ? "secondary" : "ghost"}
+          size="sm"
+          className="rounded-full shrink-0 border mt-1"
+          onClick={() => setShowNote(!showNote)}
+          aria-expanded={showNote}
+        >
+          <StickyNote className="h-4 w-4 mr-1.5" /> Refleksi
         </Button>
       </div>
 
-      {/* Date nav — single source tanggal */}
-      <div className="flex items-center justify-center">
-        <div className="flex items-center gap-1 rounded-full bg-muted p-1">
-          <button onClick={() => setDate((d) => new Date(d.getTime() - 86400000))} className="h-8 w-8 rounded-full bg-card border flex items-center justify-center" aria-label="Hari sebelumnya">
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <div className="px-4 text-sm font-medium flex items-center gap-1.5">
-            <CalendarDays className="h-4 w-4 text-muted-foreground" /> {formatDate(date)}
+      {/* Kemajuan — strip ramping dengan jalan ke Progress */}
+      <div className="rounded-[20px] px-5 py-4 text-white relative overflow-hidden bg-gradient-to-br from-[#1C5B40] via-[#17452F] to-[#102E21]">
+        <div className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/5" aria-hidden="true" />
+        <div className="relative flex items-center gap-4">
+          <ProgressRing value={daily} size={72} stroke={8} track="rgba(255,255,255,0.18)" bar="#E9D9A6" valueClassName="text-white" labelClassName="text-white/60" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[22px] font-bold leading-none text-white tabular-nums">
+              {daily}% <span className="text-xs font-normal text-white/60">· {completedCount}/{dbHabits.length} terisi</span>
+            </p>
+            <a href="/progress" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-white/70 underline underline-offset-4 hover:text-white">
+              Lihat perjalanan mingguan →
+            </a>
           </div>
-          <button onClick={() => setDate((d) => new Date(d.getTime() + 86400000))} className="h-8 w-8 rounded-full bg-card border flex items-center justify-center" aria-label="Hari berikutnya">
-            <ChevronRight className="h-4 w-4" />
-          </button>
         </div>
       </div>
-
-      {/* Progress hero — hanya ring, tanpa bar duplikat */}
-      <Card className="rounded-[24px] p-6">
-        <div className="flex flex-col sm:flex-row items-center gap-6">
-          <ProgressRing value={daily} size={112} stroke={10} />
-          <div className="flex-1 text-center sm:text-left min-w-0">
-            <div className="text-xs font-semibold tracking-widest uppercase text-muted-foreground">Progress hari ini</div>
-            <div className="text-[28px] font-bold leading-none mt-1">
-              {daily}% <span className="text-sm font-normal text-muted-foreground">• {completedCount}/{dbHabits.length} selesai</span>
-            </div>
-            <p className="text-sm text-muted-foreground mt-2">
-              {daily === 100 ? "Alhamdulillah, semua target selesai! 🌿" : "Tap kartu untuk menyelesaikan — progress langsung berubah."}
-            </p>
-          </div>
-        </div>
-      </Card>
 
       {showNote && (
         <Card className="rounded-[20px] p-5">
-          <label className="text-sm font-medium">Catatan hari ini (opsional)</label>
+          <label htmlFor="refleksi" className="text-sm font-medium">Refleksi singkat hari ini</label>
           <textarea
-            placeholder="Tulis refleksi singkat hari ini..."
-            className="mt-2 w-full min-h-[72px] rounded-xl border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            onBlur={async (e) => {
-              if (!userId || !dbHabits[0]) return;
-              const { updateMutabaahEntry } = await import("@/lib/actions/habit");
-              const cur = entries[dbHabits[0].id];
-              if (cur) await updateMutabaahEntry({ habit_id: dbHabits[0].id, user_id: userId, date: toISO(date), value: cur.value, status: cur.status, note: e.target.value || null });
+            id="refleksi"
+            value={noteText}
+            onChange={(e) => {
+              setNoteText(e.target.value);
+              setNoteSaved(false);
             }}
+            onBlur={() => {
+              if (noteText.trim() !== noteLoaded.trim()) void saveNote(noteText);
+            }}
+            placeholder="Apa yang paling berkesan hari ini? Cukup satu kalimat…"
+            className="mt-2 w-full min-h-[72px] rounded-xl border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
-          <p className="text-xs text-muted-foreground mt-2">Catatan privat, tidak dibagikan sebagai analytics.</p>
+          <div className="mt-3 flex items-center gap-2">
+            <Button
+              size="sm"
+              className="rounded-full"
+              disabled={noteSaving || !userId || noteText.trim() === noteLoaded.trim()}
+              onClick={() => void saveNote(noteText)}
+            >
+              {noteSaving ? "Menyimpan…" : noteSaved && noteText.trim() ? "Tersimpan ✓" : "Simpan refleksi"}
+            </Button>
+            {!userId && <span className="text-xs text-muted-foreground">Masuk untuk menyimpan.</span>}
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">Hanya untukmu — catatan ini privat dan tidak dibagikan ke siapa pun.</p>
         </Card>
       )}
 
-      {/* Category chips — tanpa count ganda */}
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none -mx-4 px-4 lg:mx-0 lg:px-0">
-        {["Semua", ...categories].map((c) => {
-          const active = filter === c;
-          return (
-            <button
-              key={c}
-              onClick={() => setFilter(c)}
-              className={`shrink-0 rounded-full px-4 py-2 text-xs font-medium border transition-colors ${active ? "bg-primary text-white border-primary shadow-sm" : "bg-card hover:bg-muted"}`}
-            >
-              {c}
-            </button>
-          );
-        })}
+      {/* Saring berdasarkan kategori — menempel saat menggulir */}
+      <div className="sticky top-14 z-20 -mx-4 px-4 lg:mx-0 lg:px-0 py-2 bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none" role="group" aria-label="Saring berdasarkan kategori">
+          {["Semua", ...categories].map((c) => {
+            const active = filter === c;
+            return (
+              <button
+                key={c}
+                onClick={() => setFilter(c)}
+                aria-pressed={active}
+                className={`shrink-0 rounded-full px-4 py-2 min-h-[36px] text-xs font-medium border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? "bg-primary text-white border-primary shadow-sm" : "bg-card hover:bg-muted"}`}
+              >
+                {c}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Grouped habits — count hanya di header */}
-      <div className="space-y-7">
-        {grouped.map((g) => (
-          <div key={g.cat}>
-            <div className="flex items-center gap-2 mb-3">
-              <h3 className="text-[11px] font-semibold tracking-widest uppercase text-muted-foreground">{g.cat}</h3>
-              <span className="text-[11px] bg-muted px-2 py-0.5 rounded-full font-medium">{g.items.length}</span>
-            </div>
-            <div className="grid gap-3">
-              {g.items.map((h) => (
+      {/* Daftar amalan per kategori — hitung yang terisi, bukan total */}
+      <div className="space-y-6">
+        {grouped.length === 0 && (
+          <Card className="rounded-[20px] p-6 text-center">
+            <p className="text-sm font-medium">Tidak ada amalan pada saringan ini.</p>
+            <p className="text-xs text-muted-foreground mt-1">Coba pilih kategori lain.</p>
+            <Button variant="secondary" size="sm" className="rounded-full mt-4" onClick={() => setFilter("Semua")}>
+              Tampilkan semua
+            </Button>
+          </Card>
+        )}
+        {grouped.map((g) => {
+          const filled = g.items.filter((h) => entries[h.id]?.status === "COMPLETED").length;
+          const allDone = filled === g.items.length;
+          return (
+            <section key={g.cat} aria-label={`Kategori ${g.cat}`}>
+              <div className="flex items-center gap-2 mb-3">
+                <h2 className="text-[11px] font-semibold tracking-widest uppercase text-muted-foreground">{g.cat}</h2>
+                <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${allDone ? "bg-[var(--primary-soft)] text-primary" : "bg-muted text-muted-foreground"}`}>
+                  {filled}/{g.items.length} terisi
+                </span>
+              </div>
+              <div className="grid gap-3">
+                {g.items.map((h) => (
                 <HabitCard
                   key={h.id}
                   habit={{ id: h.id, name: h.name, category: h.category as any, type: h.type, target: h.target_value, unit: h.unit ?? undefined }}
                   entry={entries[h.id]}
                   onToggle={() => handleToggle(h.id)}
                   onUpdateValue={(d) => handleUpdate(h.id, d)}
+                  onPickContext={h.category === "Ibadah Wajib" ? (ctx) => handleContext(h.id, ctx) : undefined}
                 />
-              ))}
-            </div>
-          </div>
-        ))}
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </div>
 
       {syncError ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-center text-sm text-amber-800 flex items-center justify-center gap-2">
-          <WifiOff className="h-4 w-4" /> {syncError}
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-center text-sm text-amber-800 flex items-center justify-center gap-2" role="status">
+          <WifiOff className="h-4 w-4" aria-hidden="true" /> {syncError}
         </div>
       ) : (
-        <div className="text-center text-xs text-muted-foreground">{userId ? "Tersinkron otomatis" : "Mode demo — login untuk simpan permanen"}</div>
+        <p className="text-center text-xs text-muted-foreground">{userId ? "Perubahan tersimpan otomatis." : "Masuk untuk menyimpan catatanmu dengan aman."}</p>
       )}
     </div>
   );
