@@ -25,15 +25,20 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
+  // Fast path: public & static — jangan panggil auth.getUser() (299ms per nav)
+  const pathname = request.nextUrl.pathname;
+  const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith("/_next") || pathname.startsWith("/api/auth"));
+  const isProtected = ["/beranda", "/mutabaah", "/progress", "/keluarga", "/profil"].some((p) => pathname.startsWith(p));
+  if (isPublic || !isProtected) return supabaseResponse;
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isPublic = PUBLIC_PATHS.some((p) => request.nextUrl.pathname === p || request.nextUrl.pathname.startsWith("/_next") || request.nextUrl.pathname.startsWith("/api/auth"));
-
-  if (!user && !isPublic && ["/beranda", "/mutabaah", "/progress", "/keluarga", "/profil"].some((p) => request.nextUrl.pathname.startsWith(p))) {
+  if (!user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
 

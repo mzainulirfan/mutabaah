@@ -56,29 +56,40 @@ export default function BerandaPage() {
       const { data: membership } = await supabase.from("mutabaah_family_members").select("family_id,role").eq("user_id", auth.user.id).maybeSingle();
       if (!membership) { setLoading(false); return; }
       setRole(membership.role);
-      const { data: family } = await supabase.from("mutabaah_families").select("name").eq("id", membership.family_id).single();
+      // Parallelize: family + members (2) → then all data in parallel (5 queries → ~600ms vs 1.5s seq)
+      const [{ data: family }, { data: familyMembers }] = await Promise.all([
+        supabase.from("mutabaah_families").select("name").eq("id", membership.family_id).single(),
+        supabase.from("mutabaah_family_members").select("user_id,role").eq("family_id", membership.family_id),
+      ]);
       if (family) setFamilyName(family.name);
-      const { data: familyMembers } = await supabase.from("mutabaah_family_members").select("user_id,role").eq("family_id", membership.family_id);
       const userIds = (familyMembers ?? []).map((m: any) => m.user_id);
-      const { data: profiles } = await supabase.from("mutabaah_profiles").select("id,name").in("id", userIds);
-      const profileMap = new Map((profiles ?? []).map((p: any) => [p.id, p.name]));
-      const { data: habits } = await supabase.from("mutabaah_habits").select("id,target_value,type").eq("family_id", membership.family_id).eq("is_active", true);
+      if (userIds.length === 0) { setLoading(false); return; }
       const today = new Date().toISOString().slice(0, 10);
       const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-      const { data: todayEntries } = await supabase.from("mutabaah_entries").select("user_id,habit_id,value,status").in("user_id", userIds).eq("date", today);
-      const { data: yesterdayEntries } = await supabase.from("mutabaah_entries").select("user_id,habit_id,value,status").in("user_id", userIds).eq("date", yesterday);
       const thirtyAgo = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
-      const { data: last30 } = await supabase.from("mutabaah_entries").select("user_id,date,value,habit_id,status").in("user_id", userIds).gte("date", thirtyAgo);
+      const [{ data: profiles }, { data: habits }, { data: todayEntries }, { data: yesterdayEntries }, { data: last30 }, { data: recentEntries }] = await Promise.all([
+        supabase.from("mutabaah_profiles").select("id,name").in("id", userIds),
+        supabase.from("mutabaah_habits").select("id,target_value,type").eq("family_id", membership.family_id).eq("is_active", true),
+        supabase.from("mutabaah_entries").select("user_id,habit_id,value,status").in("user_id", userIds).eq("date", today),
+        supabase.from("mutabaah_entries").select("user_id,habit_id,value,status").in("user_id", userIds).eq("date", yesterday),
+        supabase.from("mutabaah_entries").select("user_id,date,value,habit_id,status").in("user_id", userIds).gte("date", thirtyAgo),
+        supabase.from("mutabaah_entries").select("user_id,habit_id,status,completed_at").in("user_id", userIds).order("completed_at", { ascending: false }).limit(5),
+      ]);
+      const profileMap = new Map((profiles ?? []).map((p: any) => [p.id, p.name]));
+      // Index entries for O(1) lookup (was Array.find inside nested loops)
+      const todayMap = new Map((todayEntries ?? []).map((e: any) => [`${e.user_id}:${e.habit_id}`, e]));
+      const yMap = new Map((yesterdayEntries ?? []).map((e: any) => [`${e.user_id}:${e.habit_id}`, e]));
+      const last30Map = new Map((last30 ?? []).map((e: any) => [`${e.user_id}|${e.date}|${e.habit_id}`, e]));
       const memberStats: typeof members = [];
       let familySum = 0; let familySumYesterday = 0;
       for (const m of familyMembers ?? []) {
         const name = (profileMap.get(m.user_id) as string) ?? m.user_id.slice(0, 6);
         const items = (habits ?? []).map((h: any) => {
-          const e = (todayEntries ?? []).find((x: any) => x.user_id === m.user_id && x.habit_id === h.id);
+          const e: any = todayMap.get(`${m.user_id}:${h.id}`);
           return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 };
         });
         const itemsY = (habits ?? []).map((h: any) => {
-          const e = (yesterdayEntries ?? []).find((x: any) => x.user_id === m.user_id && x.habit_id === h.id);
+          const e: any = yMap.get(`${m.user_id}:${h.id}`);
           return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 };
         });
         const prog = dailyProgress(items);
@@ -86,7 +97,7 @@ export default function BerandaPage() {
         familySum += prog; familySumYesterday += progY;
         const days: string[] = []; for (let i = 29; i >= 0; i--) days.push(new Date(Date.now() - i * 86400000).toISOString().slice(0, 10));
         const dailyVals = days.map((d) => {
-          const itemsD = (habits ?? []).map((h: any) => { const e = (last30 ?? []).find((x: any) => x.user_id === m.user_id && x.date === d && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
+          const itemsD = (habits ?? []).map((h: any) => { const e: any = last30Map.get(`${m.user_id}|${d}|${h.id}`); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
           return dailyProgress(itemsD);
         });
         let streak = 0; for (let i = dailyVals.length - 1; i >= 0; i--) { if (isStreakDay(dailyVals[i])) streak++; else break; }
@@ -104,13 +115,13 @@ export default function BerandaPage() {
         const iso = d.toISOString().slice(0, 10);
         const perMember = memberStats.map((_, idx) => {
           const uid = userIds[idx];
-          const itemsD = (habits ?? []).map((h: any) => { const e = (last30 ?? []).find((x: any) => x.user_id === uid && x.date === iso && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
+          const itemsD = (habits ?? []).map((h: any) => { const e: any = last30Map.get(`${uid}|${iso}|${h.id}`); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
           return dailyProgress(itemsD);
         });
         weekDays.push({ day: dayNames[d.getDay()], value: perMember.length ? Math.round(perMember.reduce((a, b) => a + b, 0) / perMember.length) : 0 });
       }
       setWeekly(weekDays);
-      const { data: recentEntries } = await supabase.from("mutabaah_entries").select("user_id,habit_id,status,completed_at").in("user_id", userIds).order("completed_at", { ascending: false }).limit(5);
+      // recentEntries already fetched in parallel above — reuse
       const habitIds = (recentEntries ?? []).map((r: any) => r.habit_id);
       const { data: habitNames } = habitIds.length ? await supabase.from("mutabaah_habits").select("id,name").in("id", habitIds) : { data: [] as any[] };
       const habitNameMap = new Map((habitNames ?? []).map((h: any) => [h.id, h.name]));

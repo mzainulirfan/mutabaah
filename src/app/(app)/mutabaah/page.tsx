@@ -8,7 +8,7 @@ import { ProgressRing } from "@/components/app/progress-ring";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, ChevronLeft, ChevronRight, StickyNote, WifiOff, Loader2 } from "lucide-react";
-import { enqueue, syncQueue } from "@/lib/offline-queue";
+import { enqueue, syncQueue, clearInvalidQueue } from "@/lib/offline-queue";
 
 type DbHabit = {
   id: string;
@@ -126,6 +126,7 @@ export default function MutabaahPage() {
 
   // sync offline queue when back online — uses real userId
   useEffect(() => {
+    clearInvalidQueue(); // bersihkan queue mock "5" dari demo lama
     if (!userId) return;
     const doSync = () =>
       syncQueue(async (e) => {
@@ -140,7 +141,10 @@ export default function MutabaahPage() {
         });
       })
         .then(() => setSyncError(null))
-        .catch(() => setSyncError("Perubahan belum tersimpan. Coba lagi."));
+        .catch((err: any) => {
+          if (err?.message?.includes("Invalid habit_id")) clearInvalidQueue();
+          setSyncError(err?.message?.includes("Invalid habit_id") ? "Data lama dibersihkan — coba lagi." : "Perubahan belum tersimpan. Coba lagi.");
+        });
     window.addEventListener("online", doSync);
     doSync();
     return () => window.removeEventListener("online", doSync);
@@ -167,11 +171,13 @@ export default function MutabaahPage() {
 
   async function persist(habitId: string, value: number, status: Entry["status"]) {
     const iso = toISO(date);
-    const payload = { habit_id: habitId, value, status, date: iso };
-    if (!userId) {
-      // demo mode — only local
+    // guard mock id
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(habitId)) {
+      setSyncError("Data lokal kadaluarsa — refresh halaman.");
       return;
     }
+    const payload = { habit_id: habitId, value, status, date: iso };
+    if (!userId) return;
     if (!navigator.onLine) {
       enqueue(payload);
       setSyncError("Offline — perubahan akan disinkronkan.");
@@ -181,7 +187,12 @@ export default function MutabaahPage() {
       const { updateMutabaahEntry } = await import("@/lib/actions/habit");
       await updateMutabaahEntry({ habit_id: habitId, user_id: userId, date: iso, value, status });
       setSyncError(null);
-    } catch {
+    } catch (e: any) {
+      if (e?.message?.includes("Invalid habit_id")) {
+        clearInvalidQueue();
+        setSyncError("Data lama dibersihkan — refresh halaman.");
+        return;
+      }
       enqueue(payload);
       setSyncError("Perubahan belum tersimpan. Coba lagi.");
     }

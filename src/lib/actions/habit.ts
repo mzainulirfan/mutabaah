@@ -49,6 +49,9 @@ export async function getTodayMutabaah(familyId: string, userId: string, date: s
   return { habits, entries };
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUUID(v: string) { return UUID_RE.test(v); }
+
 export async function updateMutabaahEntry(input: {
   habit_id: string;
   user_id: string;
@@ -57,6 +60,8 @@ export async function updateMutabaahEntry(input: {
   status: "PENDING" | "PARTIAL" | "COMPLETED" | "SKIPPED";
   note?: string | null;
 }) {
+  if (!isUUID(input.habit_id)) throw new Error(`Invalid habit_id "${input.habit_id}" — expected uuid (habit belum sync, refresh halaman)`);
+  if (!isUUID(input.user_id)) throw new Error(`Invalid user_id "${input.user_id}"`);
   const supabase = await createClient();
   if (!supabase) return { id: "demo-entry" };
   const payload = {
