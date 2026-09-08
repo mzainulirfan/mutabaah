@@ -60,25 +60,29 @@ export default function KeluargaPage() {
   }
 
   const menu = [
-    { href: "/keluarga/anggota", title: "Anggota", desc: "Lihat dan undang anggota keluarga", icon: Users, badge: `${members.length}` },
-    { href: "/keluarga/amalan", title: "Amalan", desc: "Atur daftar amalan harian", icon: Target, badge: `${activeHabits} aktif` },
-    { href: "/keluarga/lainnya", title: "Lainnya", desc: "Nama keluarga dan tampilan", icon: Settings2, badge: "" },
+    { href: "/keluarga/anggota", title: "Anggota", desc: "Siapa saja di keluarga ini, undang yang belum bergabung", icon: Users, badge: `${members.length} orang` },
+    { href: "/keluarga/amalan", title: "Amalan", desc: "Daftar target harian yang diisi bersama", icon: Target, badge: `${activeHabits} aktif` },
+    { href: "/keluarga/lainnya", title: "Lainnya", desc: "Nama keluarga dan tampilan rangkaian", icon: Settings2, badge: "" },
   ];
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-[26px] font-bold tracking-tight leading-tight">{familyName}</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {members.length} anggota · {activeHabits} amalan aktif
-        </p>
-        <div className="mt-3 flex -space-x-2" aria-hidden="true">
-          {members.slice(0, 5).map((m) => (
-            <div key={m.id} className="h-8 w-8 rounded-full bg-[var(--primary-soft)] border-2 border-white flex items-center justify-center text-xs font-semibold text-primary">
-              {m.name.slice(0, 2).toUpperCase()}
-            </div>
-          ))}
-          {members.length > 5 && <div className="h-8 w-8 rounded-full bg-muted border-2 border-white flex items-center justify-center text-xs">+{members.length - 5}</div>}
+      <div className="rounded-[24px] p-6 text-white relative overflow-hidden bg-gradient-to-br from-[#1C5B40] via-[#17452F] to-[#102E21]">
+        <div className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/5" aria-hidden="true" />
+        <div className="relative">
+          <p className="text-xs font-semibold tracking-widest uppercase text-white/60">Keluarga</p>
+          <h1 className="text-[26px] font-bold tracking-tight leading-tight mt-1 text-white">{familyName}</h1>
+          <p className="text-sm text-white/70 mt-1">
+            {members.length} anggota · {activeHabits} amalan aktif
+          </p>
+          <div className="mt-4 flex -space-x-2" aria-hidden="true">
+            {members.slice(0, 5).map((m) => (
+              <div key={m.id} className="h-8 w-8 rounded-full bg-white/15 border-2 border-[#17452F] flex items-center justify-center text-xs font-semibold text-white">
+                {m.name.slice(0, 2).toUpperCase()}
+              </div>
+            ))}
+            {members.length > 5 && <div className="h-8 w-8 rounded-full bg-black/25 border-2 border-[#17452F] flex items-center justify-center text-xs font-medium text-white">+{members.length - 5}</div>}
+          </div>
         </div>
       </div>
 
@@ -98,7 +102,7 @@ export default function KeluargaPage() {
                   <span className="block text-xs text-muted-foreground mt-1.5 truncate">{m.desc}</span>
                 </span>
                 {m.badge ? (
-                  <span className="text-xs bg-muted px-2.5 py-1 rounded-full font-medium shrink-0">{m.badge}</span>
+                  <span className="text-xs bg-muted px-2.5 py-1 rounded-full font-medium shrink-0 tabular-nums">{m.badge}</span>
                 ) : null}
                 <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
               </Link>
@@ -106,6 +110,10 @@ export default function KeluargaPage() {
           ))}
         </ul>
       </Card>
+
+      <p className="text-center text-xs text-muted-foreground leading-5">
+        Perubahan di sini langsung berlaku untuk semua anggota,<br />jadi ubahlah dengan tenang dan secukupnya.
+      </p>
     </div>
   );
 }

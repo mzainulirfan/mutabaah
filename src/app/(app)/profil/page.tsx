@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Bell, LogOut, User, Mail, Check, ShieldCheck, Crown, Sun, Moon, ChevronRight } from "lucide-react";
+import { Bell, User, Mail, Check, Crown, Sun, Moon, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { logout } from "@/lib/actions/auth";
@@ -52,45 +52,51 @@ export default function ProfilPage() {
         <p className="text-sm text-muted-foreground mt-1.5">Akun, keluarga, dan pengingat.</p>
       </div>
 
-      {/* Hero with cover */}
-      <Card className="rounded-[24px] overflow-hidden">
-        <div className="h-20 bg-[var(--primary-soft)] border-b border-primary/10" />
-        <div className="p-5">
-          <div className="flex items-start gap-4 -mt-10">
-            <div className="h-16 w-16 rounded-2xl bg-card border shadow-sm flex items-center justify-center text-primary font-bold text-lg shrink-0">
-              {user ? user.name.slice(0, 2).toUpperCase() : <User className="h-6 w-6" />}
-            </div>
-            <div className="flex-1 min-w-0 pt-1">
-              <div className="font-bold leading-none truncate">{user ? user.name : "Belum login"}</div>
-              <div className="text-sm text-muted-foreground flex items-center gap-1.5 truncate mt-1">
-                <Mail className="h-3.5 w-3.5" /> {user?.email ?? "—"}
-              </div>
-              <div className="flex items-center gap-1.5 mt-2">
-                {role && <span className="text-[11px] bg-[var(--primary-soft)] text-primary border border-primary/10 px-2 py-0.5 rounded-full font-medium">{role}</span>}
-                {family && <span className="text-[11px] bg-muted px-2 py-0.5 rounded-full flex items-center gap-1"><Crown className="h-3 w-3" /> {family}</span>}
-              </div>
-            </div>
-            {user ? (
-              <form action={logout}>
-                <Button variant="secondary" size="sm" className="rounded-full shrink-0" type="submit">
-                  Keluar
-                </Button>
-              </form>
-            ) : (
-              <Link href="/login">
-                <Button variant="secondary" size="sm" className="rounded-full">
-                  Masuk
-                </Button>
-              </Link>
-            )}
+      {/* Hero — panel hijau tua seperti halaman lain */}
+      <div className="rounded-[24px] p-6 text-white relative overflow-hidden bg-gradient-to-br from-[#1C5B40] via-[#17452F] to-[#102E21]">
+        <div className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/5" aria-hidden="true" />
+        <div className="relative flex items-start gap-4">
+          <div className="h-16 w-16 rounded-2xl bg-white/15 flex items-center justify-center text-white font-bold text-lg shrink-0">
+            {user ? user.name.slice(0, 2).toUpperCase() : <User className="h-6 w-6" />}
           </div>
-          {user && (
-            <div className="mt-5 flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-2xl p-3">
-              <ShieldCheck className="h-4 w-4 text-primary shrink-0" /> Data keluarga privat & terisolasi — hanya anggota yang bisa lihat.
+          <div className="flex-1 min-w-0 pt-0.5">
+            <div className="font-bold text-lg leading-tight truncate text-white">{user ? user.name : "Belum login"}</div>
+            <div className="text-sm text-white/70 flex items-center gap-1.5 truncate mt-1">
+              <Mail className="h-3.5 w-3.5 shrink-0" /> {user?.email ?? "—"}
             </div>
+            <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+              {role && (
+                <span className="text-[11px] bg-white/15 px-2 py-0.5 rounded-full font-medium text-white">
+                  {role === "OWNER" ? "Pemilik" : role === "PARENT" ? "Orang tua" : "Anggota"}
+                </span>
+              )}
+              {family && (
+                <span className="text-[11px] bg-white/15 px-2 py-0.5 rounded-full flex items-center gap-1 text-white">
+                  <Crown className="h-3 w-3" /> {family}
+                </span>
+              )}
+            </div>
+          </div>
+          {user ? (
+            <form action={logout} className="shrink-0">
+              <Button variant="secondary" size="sm" className="rounded-full" type="submit">
+                Keluar
+              </Button>
+            </form>
+          ) : (
+            <Link href="/login" className="shrink-0">
+              <Button variant="secondary" size="sm" className="rounded-full">
+                Masuk
+              </Button>
+            </Link>
           )}
         </div>
-      </Card>
+        {user && (
+          <p className="relative text-xs text-white/60 mt-5 leading-5">
+            Catatan dan progresmu hanya terlihat oleh keluargamu sendiri.
+          </p>
+        )}
+      </div>
 
       {msg && <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-2.5 text-sm text-emerald-800 flex items-center gap-2"><Check className="h-4 w-4" /> {msg}</div>}
 
@@ -98,7 +104,7 @@ export default function ProfilPage() {
         <h3 className="font-semibold flex items-center gap-2">
           <Bell className="h-4 w-4 text-primary" /> Pengingat harian
         </h3>
-        <p className="text-xs text-muted-foreground mt-1">Hanya kirim jika belum isi — tidak spam.</p>
+        <p className="text-xs text-muted-foreground mt-1">Disapa lembut hanya bila belum mengisi.</p>
         <div className="mt-5 space-y-4">
           <label className="flex items-center justify-between rounded-2xl border p-3.5 cursor-pointer hover:border-primary/15 transition-colors">
             <span className="text-sm font-medium">Aktifkan pengingat</span>
@@ -122,16 +128,14 @@ export default function ProfilPage() {
         </div>
       </Card>
 
-      <Card className="rounded-[20px] p-1">
-        <Link href="/keluarga" className="flex items-center justify-between p-4 rounded-2xl hover:bg-muted/50 transition-colors">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-[var(--primary-soft)] flex items-center justify-center text-primary"><Crown className="h-4 w-4" /></div>
-            <div>
-              <div className="text-sm font-semibold">Keluarga</div>
-              <div className="text-xs text-muted-foreground">{family ?? "Lihat anggota & amalan"}</div>
-            </div>
+      <Card className="rounded-[20px] p-2">
+        <Link href="/keluarga" className="flex items-center gap-3 p-3.5 rounded-2xl hover:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <div className="h-10 w-10 rounded-xl bg-[var(--primary-soft)] flex items-center justify-center text-primary shrink-0"><Crown className="h-5 w-5" /></div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold leading-none">Keluargaku</div>
+            <div className="text-xs text-muted-foreground mt-1.5 truncate">{family ?? "Lihat anggota dan amalan"}</div>
           </div>
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
         </Link>
       </Card>
     </div>
