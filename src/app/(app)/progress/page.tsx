@@ -6,11 +6,15 @@ import { Flame, Trophy, CalendarDays, TrendingUp, ArrowRight } from "lucide-reac
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { dailyProgress, isStreakDay, calendarStatus } from "@/lib/progress";
+import { daysAgoLocal, localDateKey } from "@/lib/local-date";
+import { useLocalDayKey } from "@/hooks/use-local-day-key";
+import { getFamilyContext, getSessionUser } from "@/lib/family-context";
 
 type HabitRow = { id: string; name: string; category: string; type: string; target_value: number };
 
 export default function ProgressPage() {
   const supabase = useMemo(() => createClient(), []);
+  const dayKey = useLocalDayKey();
   const [loading, setLoading] = useState(true);
   const [habits, setHabits] = useState<HabitRow[]>([]);
   const [weekly, setWeekly] = useState<{ day: string; value: number }[]>([]);
@@ -48,23 +52,22 @@ export default function ProgressPage() {
         setLoading(false);
         return;
       }
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) { setLoading(false); return; }
-      const { data: mem } = await supabase.from("mutabaah_family_members").select("family_id").eq("user_id", auth.user.id).maybeSingle();
-      if (!mem) { setLoading(false); return; }
-      const { data: habitRows } = await supabase.from("mutabaah_habits").select("id,name,category,type,target_value").eq("family_id", mem.family_id).eq("is_active", true).order("sort_order");
-      const hRows: HabitRow[] = (habitRows ?? []) as any;
+      const user = await getSessionUser(supabase);
+      if (!user) { setLoading(false); return; }
+      const family = await getFamilyContext(supabase, user.id);
+      if (!family) { setLoading(false); return; }
+      const hRows: HabitRow[] = family.habits;
       setHabits(hRows);
-      const thirtyAgo = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
       const nowForRange = new Date();
+      const thirtyAgo = localDateKey(daysAgoLocal(29, nowForRange));
       const monthStartISO = `${nowForRange.getFullYear()}-${String(nowForRange.getMonth() + 1).padStart(2, "0")}-01`;
       const rangeStart = monthStartISO < thirtyAgo ? monthStartISO : thirtyAgo;
-      const { data: entries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,date").eq("user_id", auth.user.id).gte("date", rangeStart);
+      const { data: entries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,date").eq("user_id", user.id).gte("date", rangeStart);
       const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
       const weekVals: { day: string; value: number }[] = [];
       for (let i = 6; i >= 0; i--) {
-        const d = new Date(Date.now() - i * 86400000);
-        const iso = d.toISOString().slice(0, 10);
+        const d = daysAgoLocal(i, nowForRange);
+        const iso = localDateKey(d);
         const items = hRows.map((h) => { const e = (entries ?? []).find((x: any) => x.date === iso && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
         weekVals.push({ day: dayNames[d.getDay()], value: dailyProgress(items) });
       }
@@ -74,7 +77,7 @@ export default function ProgressPage() {
       setBestDay(weekVals.reduce((best, cur) => (cur.value > best.value ? cur : best), weekVals[0] ?? { day: "-", value: 0 }));
       const allDays: number[] = [];
       for (let i = 29; i >= 0; i--) {
-        const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+        const d = localDateKey(daysAgoLocal(i, nowForRange));
         const items = hRows.map((h) => { const e = (entries ?? []).find((x: any) => x.date === d && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
         allDays.push(dailyProgress(items));
       }
@@ -86,7 +89,7 @@ export default function ProgressPage() {
       setMonthStats({ avg: avgMonth, perfect, longest });
       const bd = hRows.map((h) => {
         const vals = allDays.map((_, idx) => {
-          const d = new Date(Date.now() - (29 - idx) * 86400000).toISOString().slice(0, 10);
+          const d = localDateKey(daysAgoLocal(29 - idx, nowForRange));
           const e = (entries ?? []).find((x: any) => x.date === d && x.habit_id === h.id);
           const v = e ? Number(e.value) : 0;
           if (h.type === "BOOLEAN") return v ? 100 : 0;
@@ -110,7 +113,7 @@ export default function ProgressPage() {
       else setInsight("Belum ada data bulan ini. Mulai dari satu isian hari ini.");
       setLoading(false);
     })();
-  }, [supabase]);
+  }, [supabase, dayKey]);
 
   if (loading) {
     return (

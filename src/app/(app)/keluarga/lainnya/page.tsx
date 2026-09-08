@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Check, ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { clearFamilyCache, getFamilyContext, getSessionUser } from "@/lib/family-context";
 
 export default function LainnyaPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -17,12 +18,13 @@ export default function LainnyaPage() {
   useEffect(() => {
     (async () => {
       if (!supabase) { setLoading(false); return; }
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) { setLoading(false); return; }
-      const { data: mem } = await supabase.from("mutabaah_family_members").select("family_id").eq("user_id", auth.user.id).maybeSingle();
-      if (!mem) { setLoading(false); return; }
-      const { data: fam } = await supabase.from("mutabaah_families").select("id,name").eq("id", mem.family_id).single();
-      if (fam) { setFamily(fam); setEditName(fam.name); }
+      const user = await getSessionUser(supabase);
+      if (!user) { setLoading(false); return; }
+      const familyContext = await getFamilyContext(supabase, user.id);
+      if (!familyContext) { setLoading(false); return; }
+      const family = { id: familyContext.familyId, name: familyContext.familyName };
+      setFamily(family);
+      setEditName(family.name);
       setLoading(false);
     })();
   }, [supabase]);
@@ -41,6 +43,7 @@ export default function LainnyaPage() {
       const fd = new FormData();
       fd.set("name", editName.trim());
       await updateFamily(family.id, fd);
+      clearFamilyCache();
       setFamily({ ...family, name: editName.trim() });
       setMsg("Nama keluarga diperbarui.");
     } catch (e: any) { setMsg(e.message); } finally { setSavingName(false); }

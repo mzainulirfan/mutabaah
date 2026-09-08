@@ -8,6 +8,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StickyNote, WifiOff, Sparkles } from "lucide-react";
 import { enqueue, syncQueue, clearInvalidQueue } from "@/lib/offline-queue";
+import { localDateKey } from "@/lib/local-date";
+import { getFamilyContext, getSessionUser } from "@/lib/family-context";
 
 type DbHabit = {
   id: string;
@@ -18,14 +20,10 @@ type DbHabit = {
   unit: string | null;
 };
 
-function toISO(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-
 export default function MutabaahPage() {
   const [dbHabits, setDbHabits] = useState<DbHabit[] | null>(null);
   const [entries, setEntries] = useState<Record<string, Entry>>({});
-  const [date] = useState(new Date());
+  const [date, setDate] = useState(() => new Date());
   const [filter, setFilter] = useState<string>("Semua");
   const [showNote, setShowNote] = useState(false);
   const [noteText, setNoteText] = useState("");
@@ -41,7 +39,7 @@ export default function MutabaahPage() {
   const load = useCallback(
     async (d: Date) => {
       setLoading(true);
-      const iso = toISO(d);
+      const iso = localDateKey(d);
       try {
         if (!supabase) {
           const { habits: mockHabits, initialEntries } = await import("@/lib/mock-data");
@@ -53,8 +51,8 @@ export default function MutabaahPage() {
           setLoading(false);
           return;
         }
-        const { data: auth } = await supabase.auth.getUser();
-        if (!auth.user) {
+        const user = await getSessionUser(supabase);
+        if (!user) {
           const { habits: mockHabits, initialEntries } = await import("@/lib/mock-data");
           setDbHabits(mockHabits.map((h) => ({ id: h.id, name: h.name, category: h.category, type: h.type, target_value: h.target, unit: h.unit ?? null })));
           setEntries(initialEntries);
@@ -65,17 +63,16 @@ export default function MutabaahPage() {
           setLoading(false);
           return;
         }
-        setUserId(auth.user.id);
-        const { data: membership } = await supabase.from("mutabaah_family_members").select("family_id").eq("user_id", auth.user.id).limit(1).maybeSingle();
-        if (!membership) {
+        setUserId(user.id);
+        const family = await getFamilyContext(supabase, user.id);
+        if (!family) {
           setDbHabits([]);
           setEntries({});
           setLoading(false);
           return;
         }
-        const { data: habits } = await supabase.from("mutabaah_habits").select("id,name,category,type,target_value,unit").eq("family_id", membership.family_id).eq("is_active", true).order("sort_order");
-        setDbHabits(habits ?? []);
-        const { data: dbEntries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,note,context").eq("user_id", auth.user.id).eq("date", iso);
+        setDbHabits(family.habits);
+        const { data: dbEntries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,note,context").eq("user_id", user.id).eq("date", iso);
         const map: Record<string, Entry> = {};
         (dbEntries ?? []).forEach((e: any) => {
           map[e.habit_id] = { habitId: e.habit_id, value: Number(e.value), status: e.status, note: e.note ?? undefined, context: e.context ?? null };
@@ -97,6 +94,35 @@ export default function MutabaahPage() {
   useEffect(() => {
     load(date);
   }, [load, date]);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+
+    const refreshDayIfNeeded = () => {
+      setDate((current) => {
+        const now = new Date();
+        return localDateKey(current) === localDateKey(now) ? current : now;
+      });
+    };
+
+    const scheduleMidnightRefresh = () => {
+      const now = new Date();
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      timer = setTimeout(() => {
+        refreshDayIfNeeded();
+        scheduleMidnightRefresh();
+      }, nextMidnight.getTime() - now.getTime() + 50);
+    };
+
+    scheduleMidnightRefresh();
+    window.addEventListener("focus", refreshDayIfNeeded);
+    document.addEventListener("visibilitychange", refreshDayIfNeeded);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("focus", refreshDayIfNeeded);
+      document.removeEventListener("visibilitychange", refreshDayIfNeeded);
+    };
+  }, []);
 
   useEffect(() => {
     clearInvalidQueue();
@@ -133,7 +159,7 @@ export default function MutabaahPage() {
   const completedCount = useMemo(() => Object.values(entries).filter((e) => e.status === "COMPLETED").length, [entries]);
 
   async function persist(habitId: string, value: number, status: Entry["status"], context?: "SENDIRI" | "BERJAMAAH" | null) {
-    const iso = toISO(date);
+    const iso = localDateKey(date);
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(habitId)) {
       setSyncError("Sepertinya datanya sudah lama — muat ulang halaman sekali saja, ya.");
       return;
@@ -172,7 +198,7 @@ export default function MutabaahPage() {
       const value = cur?.value ?? 0;
       const status = cur?.status ?? "PENDING";
       const context = cur?.context ?? null;
-      await updateMutabaahEntry({ habit_id: target.id, user_id: userId, date: toISO(date), value, status, note: trimmed || null, context });
+      await updateMutabaahEntry({ habit_id: target.id, user_id: userId, date: localDateKey(date), value, status, note: trimmed || null, context });
       setEntries((prev) => ({ ...prev, [target.id]: { habitId: target.id, value, status, note: trimmed || undefined, context } }));
       setNoteLoaded(trimmed);
       setNoteSaved(true);

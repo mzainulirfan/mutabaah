@@ -6,6 +6,7 @@ import { Plus, Trash2, Loader2, Check, BookOpen, Heart, Target, ChevronLeft, Che
 import Link from "next/link";
 import { Sheet } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";
+import { clearFamilyCache, getFamilyContext, getSessionUser } from "@/lib/family-context";
 
 type HabitRow = { id: string; name: string; category: string; type: string; target_value: number; unit: string | null; is_active: boolean };
 
@@ -77,12 +78,12 @@ export default function AmalanPage() {
 
   const load = async () => {
     if (!supabase) { setLoading(false); return; }
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth.user) { setLoading(false); return; }
-    const { data: mem } = await supabase.from("mutabaah_family_members").select("family_id").eq("user_id", auth.user.id).maybeSingle();
-    if (!mem) { setLoading(false); return; }
-    setFamilyId(mem.family_id);
-    const { data: habitRows } = await supabase.from("mutabaah_habits").select("id,name,category,type,target_value,unit,is_active").eq("family_id", mem.family_id).order("sort_order");
+    const user = await getSessionUser(supabase);
+    if (!user) { setLoading(false); return; }
+    const family = await getFamilyContext(supabase, user.id);
+    if (!family) { setLoading(false); return; }
+    setFamilyId(family.familyId);
+    const { data: habitRows } = await supabase.from("mutabaah_habits").select("id,name,category,type,target_value,unit,is_active").eq("family_id", family.familyId).order("sort_order");
     setHabits((habitRows ?? []) as any);
     setLoading(false);
   };
@@ -111,6 +112,7 @@ export default function AmalanPage() {
         target_value: isTap ? 1 : Number(newHabit.target) || 1,
         unit: isTap ? undefined : newHabit.unit.trim() || selectedType.unitPlaceholder,
       });
+      clearFamilyCache();
       setNewHabit({ name: "", category: "Ibadah Wajib", type: "BOOLEAN", target: 1, unit: "" });
       setHabitOpen(false);
       setMsg(`Amalan "${newHabit.name.trim()}" tersimpan. Silakan isi mulai hari ini.`);
@@ -123,6 +125,7 @@ export default function AmalanPage() {
     try {
       const { deleteHabit } = await import("@/lib/actions/habit");
       await deleteHabit(id);
+      clearFamilyCache();
       setHabits((prev) => prev.filter((h) => h.id !== id));
       setManageHabit(null);
       setMsg(`"${name}" dihapus.`);
@@ -133,6 +136,7 @@ export default function AmalanPage() {
     try {
       const { updateHabit } = await import("@/lib/actions/habit");
       await updateHabit(h.id, { is_active: !h.is_active });
+      clearFamilyCache();
       const next = { ...h, is_active: !h.is_active };
       setHabits((prev) => prev.map((x) => (x.id === h.id ? next : x)));
       setManageHabit((prev) => (prev?.id === h.id ? next : prev));
@@ -156,6 +160,7 @@ export default function AmalanPage() {
         patch.unit = editForm.unit.trim() || null;
       }
       await updateHabit(manageHabit.id, patch as any);
+      clearFamilyCache();
       setHabits((prev) => prev.map((x) => (x.id === manageHabit.id ? { ...x, ...patch, target_value: Number((patch as any).target_value ?? x.target_value), unit: ((patch as any).unit ?? x.unit) as string | null } : x)));
       setManageHabit((prev) => (prev ? { ...prev, name: editForm.name.trim(), category: editForm.category, target_value: manageHabit.type !== "BOOLEAN" ? Number(editForm.target) || 1 : prev.target_value, unit: manageHabit.type !== "BOOLEAN" ? editForm.unit.trim() || null : prev.unit, is_active: editForm.is_active } : prev));
       setEditing(false);
@@ -173,6 +178,7 @@ export default function AmalanPage() {
       if (habits.some((h) => h.name === it.name)) continue;
       await createHabit({ family_id: familyId, name: it.name, category: it.category, type: it.type as any, target_value: it.target, unit: (it as any).unit ?? undefined });
     }
+    clearFamilyCache();
     setMsg(`Contoh "${key}" ditambahkan. Bisa diubah setelahnya.`);
     load();
   };

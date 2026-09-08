@@ -11,6 +11,9 @@ import { Sheet } from "@/components/ui/sheet";
 import { dailyProgress, isStreakDay } from "@/lib/progress";
 import type { Entry } from "@/lib/mock-data";
 import { enqueue } from "@/lib/offline-queue";
+import { daysAgoLocal, localDateKey } from "@/lib/local-date";
+import { useLocalDayKey } from "@/hooks/use-local-day-key";
+import { getFamilyContext, getSessionUser } from "@/lib/family-context";
 
 const PRAYER_ORDER = ["subuh", "dzuhur", "ashar", "maghrib", "isya"];
 
@@ -21,6 +24,7 @@ function prayerIndex(name: string) {
 
 export default function BerandaPage() {
   const supabase = useMemo(() => createClient(), []);
+  const dayKey = useLocalDayKey();
   const [loading, setLoading] = useState(true);
   const [familyName, setFamilyName] = useState("Keluarga");
   const [role, setRole] = useState<string>("OWNER");
@@ -73,32 +77,39 @@ export default function BerandaPage() {
         setLoading(false);
         return;
       }
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) { setLoading(false); return; }
-      setUserId(auth.user.id);
-      setUserName((auth.user.user_metadata?.name as string) ?? auth.user.email?.split("@")[0] ?? "Ayah");
-      const { data: membership } = await supabase.from("mutabaah_family_members").select("family_id,role").eq("user_id", auth.user.id).maybeSingle();
-      if (!membership) { setLoading(false); return; }
-      setRole(membership.role);
-      const [{ data: family }, { data: familyMembers }] = await Promise.all([
-        supabase.from("mutabaah_families").select("name").eq("id", membership.family_id).single(),
-        supabase.from("mutabaah_family_members").select("user_id,role").eq("family_id", membership.family_id),
+      const user = await getSessionUser(supabase);
+      if (!user) { setLoading(false); return; }
+      setUserId(user.id);
+      setUserName((user.user_metadata?.name as string) ?? user.email?.split("@")[0] ?? "Ayah");
+      const now = new Date();
+      const today = localDateKey(now);
+      const yesterday = localDateKey(daysAgoLocal(1, now));
+      const thirtyAgo = localDateKey(daysAgoLocal(29, now));
+      const [ctx, entryResults] = await Promise.all([
+        getFamilyContext(supabase, user.id),
+        Promise.all([
+          supabase.from("mutabaah_entries").select("user_id,habit_id,value,status,context").eq("date", today),
+          supabase.from("mutabaah_entries").select("user_id,habit_id,value,status").eq("date", yesterday),
+          supabase.from("mutabaah_entries").select("user_id,date,value,habit_id,status").gte("date", thirtyAgo),
+          supabase.from("mutabaah_entries").select("user_id,habit_id,status,context,completed_at").order("completed_at", { ascending: false }).limit(5),
+        ]),
       ]);
-      if (family) setFamilyName(family.name);
-      const userIds = (familyMembers ?? []).map((m: any) => m.user_id);
+      if (!ctx) { setLoading(false); return; }
+      setRole(ctx.role);
+      setFamilyName(ctx.familyName);
+      setMyHabits(ctx.habits);
+      const familyMembers = ctx.members.map((m) => ({ user_id: m.user_id, role: m.role }));
+      const userIds = ctx.members.map((m) => m.user_id);
       if (userIds.length === 0) { setLoading(false); return; }
-      const today = new Date().toISOString().slice(0, 10);
-      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-      const thirtyAgo = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
-      const [{ data: profiles }, { data: habits }, { data: todayEntries }, { data: yesterdayEntries }, { data: last30 }, { data: recentEntries }] = await Promise.all([
-        supabase.from("mutabaah_profiles").select("id,name").in("id", userIds),
-        supabase.from("mutabaah_habits").select("id,name,category,type,target_value,unit,sort_order").eq("family_id", membership.family_id).eq("is_active", true).order("sort_order"),
-        supabase.from("mutabaah_entries").select("user_id,habit_id,value,status,context").in("user_id", userIds).eq("date", today),
-        supabase.from("mutabaah_entries").select("user_id,habit_id,value,status").in("user_id", userIds).eq("date", yesterday),
-        supabase.from("mutabaah_entries").select("user_id,date,value,habit_id,status").in("user_id", userIds).gte("date", thirtyAgo),
-        supabase.from("mutabaah_entries").select("user_id,habit_id,status,context,completed_at").in("user_id", userIds).order("completed_at", { ascending: false }).limit(5),
-      ]);
-      const profileMap = new Map((profiles ?? []).map((p: any) => [p.id, p.name]));
+      const habits = ctx.habits;
+      const [{ data: todayEntries }, { data: yesterdayEntries }, { data: last30 }, { data: recentEntries }] = entryResults;
+      const profileMap = new Map(ctx.members.map((m) => [m.user_id, m.name] as const));
+      const myMap: Record<string, Entry> = {};
+      (todayEntries ?? []).forEach((e: any) => {
+        if (e.user_id !== user.id) return;
+        myMap[e.habit_id] = { habitId: e.habit_id, value: Number(e.value), status: e.status, context: e.context ?? null };
+      });
+      setMyEntries(myMap);
       const todayMap = new Map((todayEntries ?? []).map((e: any) => [`${e.user_id}:${e.habit_id}`, e]));
       const yMap = new Map((yesterdayEntries ?? []).map((e: any) => [`${e.user_id}:${e.habit_id}`, e]));
       const last30Map = new Map((last30 ?? []).map((e: any) => [`${e.user_id}|${e.date}|${e.habit_id}`, e]));
@@ -117,7 +128,7 @@ export default function BerandaPage() {
         const prog = dailyProgress(items);
         const progY = dailyProgress(itemsY);
         familySum += prog; familySumYesterday += progY;
-        const days: string[] = []; for (let i = 29; i >= 0; i--) days.push(new Date(Date.now() - i * 86400000).toISOString().slice(0, 10));
+        const days: string[] = []; for (let i = 29; i >= 0; i--) days.push(localDateKey(daysAgoLocal(i, now)));
         const dailyVals = days.map((d) => {
           const itemsD = (habits ?? []).map((h: any) => { const e: any = last30Map.get(`${m.user_id}|${d}|${h.id}`); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
           return dailyProgress(itemsD);
@@ -130,18 +141,11 @@ export default function BerandaPage() {
       setMembers(memberStats);
       setFamilyProgress(fp);
       setDelta(memberStats.length ? fp - fpY : null);
-      setMyHabits((habits ?? []).map((h: any, i: number) => ({ id: h.id, name: h.name, category: h.category, type: h.type, target_value: Number(h.target_value), unit: h.unit ?? null, sort_order: h.sort_order ?? i })));
-      const myMap: Record<string, Entry> = {};
-      (todayEntries ?? []).forEach((e: any) => {
-        if (e.user_id !== auth.user.id) return;
-        myMap[e.habit_id] = { habitId: e.habit_id, value: Number(e.value), status: e.status, context: e.context ?? null };
-      });
-      setMyEntries(myMap);
       const weekDays: { day: string; value: number }[] = [];
       const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
       for (let i = 6; i >= 0; i--) {
-        const d = new Date(Date.now() - i * 86400000);
-        const iso = d.toISOString().slice(0, 10);
+        const d = daysAgoLocal(i, now);
+        const iso = localDateKey(d);
         const perMember = memberStats.map((_, idx) => {
           const uid = userIds[idx];
           const itemsD = (habits ?? []).map((h: any) => { const e: any = last30Map.get(`${uid}|${iso}|${h.id}`); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
@@ -150,9 +154,7 @@ export default function BerandaPage() {
         weekDays.push({ day: dayNames[d.getDay()], value: perMember.length ? Math.round(perMember.reduce((a, b) => a + b, 0) / perMember.length) : 0 });
       }
       setWeekly(weekDays);
-      const habitIds = (recentEntries ?? []).map((r: any) => r.habit_id);
-      const { data: habitNames } = habitIds.length ? await supabase.from("mutabaah_habits").select("id,name").in("id", habitIds) : { data: [] as any[] };
-      const habitNameMap = new Map((habitNames ?? []).map((h: any) => [h.id, h.name]));
+      const habitNameMap = new Map(habits.map((habit) => [habit.id, habit.name] as const));
       const recentList = (recentEntries ?? []).map((r: any) => {
         const name = (profileMap.get(r.user_id) as string) ?? "Anggota keluarga";
         const habitName = habitNameMap.get(r.habit_id) ?? "Mutabaah";
@@ -164,7 +166,7 @@ export default function BerandaPage() {
       setRecent(recentList.length ? recentList : memberStats.map((m) => ({ name: m.name, act: m.progress > 0 ? "Mutabaah hari ini sudah terisi" : "Mutabaah hari ini menunggu diisi", time: "—", type: m.progress > 0 ? ("completed" as const) : ("pending" as const) })));
       setLoading(false);
     })();
-  }, [supabase]);
+  }, [supabase, dayKey]);
 
   // Amalan yang belum selesai hari ini — sholat ikut urutan waktu, sisanya ikut urutan daftar.
   // Wajib di atas semua return agar urutan Hooks stabil (Rules of Hooks).
@@ -239,7 +241,7 @@ export default function BerandaPage() {
   }
 
   async function persistQuick(habitId: string, value: number, status: Entry["status"], context?: "SENDIRI" | "BERJAMAAH" | null) {
-    const iso = new Date().toISOString().slice(0, 10);
+    const iso = localDateKey();
     if (!supabase || !userId || !/^[0-9a-f]{8}-/.test(userId) || !/^[0-9a-f]{8}-/.test(habitId)) return;
     const payload = { habit_id: habitId, value, status, date: iso, context: context ?? null };
     if (!navigator.onLine) {

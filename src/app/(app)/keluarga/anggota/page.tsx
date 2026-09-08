@@ -6,6 +6,7 @@ import { Link2, Trash2, Copy, Check, Loader2, ChevronLeft, X } from "lucide-reac
 import Link from "next/link";
 import { Sheet } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";
+import { clearFamilyCache, getFamilyContext, getSessionUser } from "@/lib/family-context";
 
 const roleLabel: Record<string, string> = { OWNER: "Pemilik", PARENT: "Orang tua", MEMBER: "Anggota" };
 
@@ -22,20 +23,12 @@ export default function AnggotaPage() {
 
   const load = async () => {
     if (!supabase) { setLoading(false); return; }
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth.user) { setLoading(false); return; }
-    const { data: mem } = await supabase.from("mutabaah_family_members").select("family_id").eq("user_id", auth.user.id).maybeSingle();
-    if (!mem) { setLoading(false); return; }
-    setFamilyId(mem.family_id);
-    const { data: famMembers } = await supabase.from("mutabaah_family_members").select("user_id,role").eq("family_id", mem.family_id);
-    const ids = (famMembers ?? []).map((m: any) => m.user_id);
-    const { data: profiles } = ids.length ? await supabase.from("mutabaah_profiles").select("id,name").in("id", ids) : { data: [] as any[] };
-    setMembers(
-      (famMembers ?? []).map((m: any) => {
-        const p = (profiles ?? []).find((x: any) => x.id === m.user_id);
-        return { id: m.user_id, name: p?.name ?? "Anggota", role: m.role };
-      })
-    );
+    const user = await getSessionUser(supabase);
+    if (!user) { setLoading(false); return; }
+    const family = await getFamilyContext(supabase, user.id);
+    if (!family) { setLoading(false); return; }
+    setFamilyId(family.familyId);
+    setMembers(family.members.map((member) => ({ id: member.user_id, name: member.name, role: member.role })));
     setLoading(false);
   };
 
@@ -73,6 +66,7 @@ export default function AnggotaPage() {
     const { removeFamilyMember } = await import("@/lib/actions/family");
     try {
       await removeFamilyMember(familyId, id);
+      clearFamilyCache();
       setMembers((prev) => prev.filter((x) => x.id !== id));
       setMsg(`${name} sudah dikeluarkan dari keluarga.`);
     } catch (e: any) { setMsg(e.message); }

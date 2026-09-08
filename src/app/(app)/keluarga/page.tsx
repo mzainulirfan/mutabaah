@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Users, Target, Settings2, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { getFamilyContext, getSessionUser } from "@/lib/family-context";
 
 export default function KeluargaPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -16,21 +17,13 @@ export default function KeluargaPage() {
   useEffect(() => {
     (async () => {
       if (!supabase) { setLoading(false); return; }
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) { setLoading(false); return; }
-      const { data: mem } = await supabase.from("mutabaah_family_members").select("family_id").eq("user_id", auth.user.id).maybeSingle();
-      if (!mem) { setLoading(false); return; }
-      const { data: fam } = await supabase.from("mutabaah_families").select("name").eq("id", mem.family_id).single();
-      if (fam) setFamilyName((fam as any).name);
-      const { data: famMembers } = await supabase.from("mutabaah_family_members").select("user_id").eq("family_id", mem.family_id);
-      const ids = (famMembers ?? []).map((m: any) => m.user_id);
-      const { data: profiles } = ids.length ? await supabase.from("mutabaah_profiles").select("id,name").in("id", ids) : { data: [] as any[] };
-      setMembers((famMembers ?? []).map((m: any) => {
-        const p = (profiles ?? []).find((x: any) => x.id === m.user_id);
-        return { id: m.user_id, name: p?.name ?? "Anggota" };
-      }));
-      const { data: habits, count } = await supabase.from("mutabaah_habits").select("id", { count: "exact" }).eq("family_id", mem.family_id).eq("is_active", true);
-      setActiveHabits(count ?? (habits ?? []).length);
+      const user = await getSessionUser(supabase);
+      if (!user) { setLoading(false); return; }
+      const family = await getFamilyContext(supabase, user.id);
+      if (!family) { setLoading(false); return; }
+      setFamilyName(family.familyName);
+      setMembers(family.members.map((member) => ({ id: member.user_id, name: member.name })));
+      setActiveHabits(family.habits.length);
       setLoading(false);
     })();
   }, [supabase]);

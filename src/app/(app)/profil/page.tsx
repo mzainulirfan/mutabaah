@@ -6,6 +6,7 @@ import { Bell, User, Mail, Check, Crown, Sun, Moon, ChevronRight } from "lucide-
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { logout } from "@/lib/actions/auth";
+import { getFamilyContext, getSessionUser } from "@/lib/family-context";
 
 export default function ProfilPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -19,16 +20,17 @@ export default function ProfilPage() {
   useEffect(() => {
     (async () => {
       if (!supabase) return;
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) return;
-      setUser({ id: auth.user.id, email: auth.user.email ?? "", name: (auth.user.user_metadata?.name as string) ?? auth.user.email?.split("@")[0] ?? "User" });
-      const { data: mem } = await supabase.from("mutabaah_family_members").select("family_id,role").eq("user_id", auth.user.id).maybeSingle();
-      if (mem) {
-        setRole(mem.role);
-        const { data: fam } = await supabase.from("mutabaah_families").select("name").eq("id", mem.family_id).single();
-        if (fam) setFamily(fam.name);
+      const user = await getSessionUser(supabase);
+      if (!user) return;
+      setUser({ id: user.id, email: user.email ?? "", name: (user.user_metadata?.name as string) ?? user.email?.split("@")[0] ?? "User" });
+      const [familyContext, { data: pref }] = await Promise.all([
+        getFamilyContext(supabase, user.id),
+        supabase.from("mutabaah_notification_preferences").select("*").eq("user_id", user.id).maybeSingle(),
+      ]);
+      if (familyContext) {
+        setRole(familyContext.role);
+        setFamily(familyContext.familyName);
       }
-      const { data: pref } = await supabase.from("mutabaah_notification_preferences").select("*").eq("user_id", auth.user.id).maybeSingle();
       if (pref) setNotif({ enabled: pref.enabled, morning: pref.morning_time?.slice(0, 5) ?? "07:00", evening: pref.evening_time?.slice(0, 5) ?? "20:30" });
     })();
   }, [supabase]);

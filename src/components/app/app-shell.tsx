@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { LayoutDashboard, ClipboardCheck, BarChart3, Users2, User, LogOut, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getFamilyContext, getSessionUser } from "@/lib/family-context";
 
 const parentNav = [
   { href: "/beranda", label: "Beranda", icon: LayoutDashboard },
@@ -42,14 +43,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const supabase = createClient();
     if (!supabase) return;
     (async () => {
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) return;
-      setUserName((auth.user.user_metadata?.name as string) ?? auth.user.email?.split("@")[0] ?? "Ayah");
-      const { data: mem } = await supabase.from("mutabaah_family_members").select("family_id,role").eq("user_id", auth.user.id).maybeSingle();
-      if (!mem) return;
-      setRole((mem as any).role ?? "PARENT");
-      const { data: fam } = await supabase.from("mutabaah_families").select("name").eq("id", (mem as any).family_id).single();
-      if (fam) setFamilyName((fam as any).name);
+      const user = await getSessionUser(supabase);
+      if (!user) return;
+      setUserName((user.user_metadata?.name as string) ?? user.email?.split("@")[0] ?? "Ayah");
+      const family = await getFamilyContext(supabase, user.id);
+      if (!family) return;
+      setRole(family.role);
+      setFamilyName(family.familyName);
     })();
   }, []);
 
