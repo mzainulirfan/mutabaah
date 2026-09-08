@@ -196,6 +196,25 @@ export default function KeluargaPage() {
                 </div>
                 <div className="text-xs text-muted-foreground truncate">{p.email}</div>
               </div>
+              {p.role !== "OWNER" && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={async () => {
+                    if (!confirm(`Hapus ${p.name} dari keluarga?`)) return;
+                    const { removeFamilyMember } = await import("@/lib/actions/family");
+                    try {
+                      await removeFamilyMember(family!.id, p.id);
+                      setMembers((prev) => prev.filter((x) => x.id !== p.id));
+                      setMsg(`${p.name} dihapus.`);
+                    } catch (e: any) { setMsg(e.message); }
+                  }}
+                  aria-label="Hapus anggota"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           ))}
         </div>
@@ -219,16 +238,22 @@ export default function KeluargaPage() {
           ) : (
             <div className="mt-4 space-y-2 max-h-[320px] overflow-auto pr-1">
               {habits.map((h) => (
-                <div key={h.id} className="flex items-center gap-3 rounded-2xl border p-3 hover:border-primary/15 transition-colors">
+                <div key={h.id} className={`flex items-center gap-3 rounded-2xl border p-3 transition-colors ${!h.is_active ? "opacity-60 bg-muted/30" : "hover:border-primary/15"}`}>
                   <div className={`h-9 w-9 rounded-xl flex items-center justify-center shrink-0 ${h.category === "Ibadah Wajib" ? "bg-emerald-50 text-emerald-600" : h.category === "Al-Qur'an" ? "bg-sky-50 text-sky-600" : "bg-muted text-muted-foreground"}`}>
                     {h.category === "Ibadah Wajib" ? <Heart className="h-4 w-4" /> : h.category === "Al-Qur'an" ? <BookOpen className="h-4 w-4" /> : <Target className="h-4 w-4" />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{h.name}</div>
+                    <div className="text-sm font-medium truncate flex items-center gap-1.5">
+                      {h.name} {!h.is_active && <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full">nonaktif</span>}
+                    </div>
                     <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-                      <span className="h-1.5 w-1.5 rounded-full bg-primary" /> {h.category} • {h.type} {h.target_value > 1 ? `• ${h.target_value} ${h.unit ?? ""}` : ""}
+                      <span className={`h-1.5 w-1.5 rounded-full ${h.is_active ? "bg-primary" : "bg-muted-foreground"}`} /> {h.category} • {h.type} {h.target_value > 1 ? `• ${h.target_value} ${h.unit ?? ""}` : ""} {h.type === "DURATION" ? "• durasi" : ""}
                     </div>
                   </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" checked={h.is_active} onChange={async (e) => { const { updateHabit } = await import("@/lib/actions/habit"); await updateHabit(h.id, { is_active: e.target.checked }); setHabits((prev) => prev.map((x) => (x.id === h.id ? { ...x, is_active: e.target.checked } : x))); }} className="sr-only peer" />
+                    <div className="w-9 h-5 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
                   <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => handleDeleteHabit(h.id)} aria-label="Hapus">
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -306,6 +331,24 @@ export default function KeluargaPage() {
                 </button>
               ))}
             </div>
+          </Card>
+
+          <Card className="rounded-[20px] p-5">
+            <h3 className="font-semibold text-sm">Streak</h3>
+            <p className="text-xs text-muted-foreground mt-1">Tampilkan streak 7 hari di dashboard. Nonaktifkan jika tidak ingin kompetisi.</p>
+            <label className="mt-3 flex items-center justify-between rounded-2xl border p-3 cursor-pointer hover:bg-muted/30">
+              <span className="text-sm font-medium">Tampilkan streak</span>
+              <input
+                type="checkbox"
+                defaultChecked
+                onChange={(e) => {
+                  localStorage.setItem("mutabaah:streak", e.target.checked ? "1" : "0");
+                  setMsg(e.target.checked ? "Streak ditampilkan." : "Streak disembunyikan.");
+                }}
+                className="h-5 w-5 accent-[var(--primary)]"
+              />
+            </label>
+            <p className="text-xs text-muted-foreground mt-2">Streak tidak jadi leaderboard — hanya untuk motivasi pribadi.</p>
           </Card>
         </div>
       </div>

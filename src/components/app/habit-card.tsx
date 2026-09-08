@@ -31,6 +31,7 @@ export function HabitCard({
       <button
         onClick={onToggle}
         aria-label={isCompleted ? "Batalkan" : "Selesaikan"}
+        aria-pressed={isCompleted}
         className={cn(
           "h-12 w-12 shrink-0 rounded-full border-2 flex items-center justify-center transition-all active:scale-95",
           isCompleted ? "bg-primary border-primary text-white shadow-sm" : isPartial ? "bg-white border-amber-400 text-amber-600" : "bg-white border-border text-transparent hover:border-primary/30"
@@ -48,16 +49,24 @@ export function HabitCard({
         {showCounter ? (
           <div className="flex items-center gap-2.5 mt-1.5">
             <div className="flex items-center gap-1.5">
-              <button onClick={() => onUpdateValue(-1)} className="h-8 w-8 rounded-full border bg-white flex items-center justify-center hover:bg-muted active:scale-95 transition-transform" aria-label="Kurangi">
+              <button
+                onClick={() => onUpdateValue(habit.type === "DURATION" ? -5 : -1)}
+                className="h-8 w-8 rounded-full border bg-white flex items-center justify-center hover:bg-muted active:scale-95 transition-transform"
+                aria-label="Kurangi"
+              >
                 <Minus className="h-3.5 w-3.5" />
               </button>
               <div className="min-w-[86px] text-center">
                 <span className="font-bold text-sm">
                   {entry?.value ?? 0} / {habit.target}
                 </span>
-                <span className="text-xs text-muted-foreground ml-1">{habit.unit}</span>
+                <span className="text-xs text-muted-foreground ml-1">{habit.unit ?? (habit.type === "DURATION" ? "menit" : "")}</span>
               </div>
-              <button onClick={() => onUpdateValue(1)} className="h-8 w-8 rounded-full bg-primary text-white flex items-center justify-center hover:bg-[#134d39] active:scale-95 transition-transform shadow-sm" aria-label="Tambah">
+              <button
+                onClick={() => onUpdateValue(habit.type === "DURATION" ? 5 : 1)}
+                className="h-8 w-8 rounded-full bg-primary text-white flex items-center justify-center hover:bg-[#134d39] active:scale-95 transition-transform shadow-sm"
+                aria-label="Tambah"
+              >
                 <Plus className="h-3.5 w-3.5" />
               </button>
             </div>

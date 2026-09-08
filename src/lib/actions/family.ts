@@ -55,11 +55,30 @@ export async function acceptInvitation(token: string) {
   const { data: inv, error } = await supabase.from(T_INVITATIONS).select("*").eq("token_hash", token_hash).single();
   if (error || !inv) throw new Error("Undangan tidak valid");
   if (inv.expires_at && new Date(inv.expires_at) < new Date()) throw new Error("Undangan sudah tidak berlaku.");
-  if (inv.used_at) throw new Error("Undangan sudah digunakan");
   const { data: user } = await supabase.auth.getUser();
   if (!user.user) throw new Error("Login dulu");
+  // idempotent: sudah member → return
+  const { data: existing } = await supabase.from(T_MEMBERS).select("id").eq("family_id", inv.family_id).eq("user_id", user.user.id).maybeSingle();
+  if (existing) return { familyId: inv.family_id, already: true };
+  if (inv.used_at) throw new Error("Undangan sudah digunakan");
   const { error: memErr } = await supabase.from(T_MEMBERS).insert({ family_id: inv.family_id, user_id: user.user.id, role: "MEMBER" });
-  if (memErr) throw new Error(memErr.message);
+  if (memErr) {
+    // race: unique violation → treat as already member
+    if (memErr.message.includes("duplicate") || memErr.code === "23505") return { familyId: inv.family_id, already: true };
+    throw new Error(memErr.message);
+  }
+  // optional single-use: tandai used_at (komentar jika mau multi-use)
+  // await supabase.from(T_INVITATIONS).update({ used_at: new Date().toISOString() }).eq("id", inv.id);
   revalidatePath("/keluarga");
   return { familyId: inv.family_id };
+}
+
+export async function removeFamilyMember(familyId: string, userId: string) {
+  const supabase = await createClient();
+  if (!supabase) return;
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Unauthorized");
+  const { error } = await supabase.from(T_MEMBERS).delete().eq("family_id", familyId).eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/keluarga");
 }
