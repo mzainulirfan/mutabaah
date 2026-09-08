@@ -134,7 +134,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <nav aria-label="Navigasi mobile" className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-card/95 backdrop-blur border-t pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.04)]">
           <div className="mx-auto flex items-stretch justify-around px-3 pt-2 pb-1.5">
             {nav.map((item) => {
-              const active = pathname === item.href;
+              const active = pathname === item.href || pathname.startsWith(item.href + "/");
               return (
                 <Link
                   key={item.href}
