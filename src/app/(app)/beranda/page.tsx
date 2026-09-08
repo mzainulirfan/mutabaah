@@ -85,15 +85,7 @@ export default function BerandaPage() {
       const today = localDateKey(now);
       const yesterday = localDateKey(daysAgoLocal(1, now));
       const thirtyAgo = localDateKey(daysAgoLocal(29, now));
-      const [ctx, entryResults] = await Promise.all([
-        getFamilyContext(supabase, user.id),
-        Promise.all([
-          supabase.from("mutabaah_entries").select("user_id,habit_id,value,status,context").eq("date", today),
-          supabase.from("mutabaah_entries").select("user_id,habit_id,value,status").eq("date", yesterday),
-          supabase.from("mutabaah_entries").select("user_id,date,value,habit_id,status").gte("date", thirtyAgo),
-          supabase.from("mutabaah_entries").select("user_id,habit_id,status,context,completed_at").order("completed_at", { ascending: false }).limit(5),
-        ]),
-      ]);
+      const ctx = await getFamilyContext(supabase, user.id);
       if (!ctx) { setLoading(false); return; }
       setRole(ctx.role);
       setFamilyName(ctx.familyName);
@@ -102,7 +94,12 @@ export default function BerandaPage() {
       const userIds = ctx.members.map((m) => m.user_id);
       if (userIds.length === 0) { setLoading(false); return; }
       const habits = ctx.habits;
-      const [{ data: todayEntries }, { data: yesterdayEntries }, { data: last30 }, { data: recentEntries }] = entryResults;
+      const [{ data: todayEntries }, { data: yesterdayEntries }, { data: last30 }, { data: recentEntries }] = await Promise.all([
+        supabase.from("mutabaah_entries").select("user_id,habit_id,value,status,context").eq("family_id", ctx.familyId).eq("date", today),
+        supabase.from("mutabaah_entries").select("user_id,habit_id,value,status").eq("family_id", ctx.familyId).eq("date", yesterday),
+        supabase.from("mutabaah_entries").select("user_id,date,value,habit_id,status").eq("family_id", ctx.familyId).gte("date", thirtyAgo),
+        supabase.from("mutabaah_entries").select("user_id,habit_id,status,context,completed_at").eq("family_id", ctx.familyId).order("completed_at", { ascending: false }).limit(5),
+      ]);
       const profileMap = new Map(ctx.members.map((m) => [m.user_id, m.name] as const));
       const myMap: Record<string, Entry> = {};
       (todayEntries ?? []).forEach((e: any) => {

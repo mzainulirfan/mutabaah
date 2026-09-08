@@ -72,7 +72,7 @@ export default function MutabaahPage() {
           return;
         }
         setDbHabits(family.habits);
-        const { data: dbEntries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,note,context").eq("user_id", user.id).eq("date", iso);
+        const { data: dbEntries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,note,context").eq("family_id", family.familyId).eq("user_id", user.id).eq("date", iso);
         const map: Record<string, Entry> = {};
         (dbEntries ?? []).forEach((e: any) => {
           map[e.habit_id] = { habitId: e.habit_id, value: Number(e.value), status: e.status, note: e.note ?? undefined, context: e.context ?? null };

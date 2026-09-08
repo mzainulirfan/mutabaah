@@ -62,7 +62,7 @@ export default function ProgressPage() {
       const thirtyAgo = localDateKey(daysAgoLocal(29, nowForRange));
       const monthStartISO = `${nowForRange.getFullYear()}-${String(nowForRange.getMonth() + 1).padStart(2, "0")}-01`;
       const rangeStart = monthStartISO < thirtyAgo ? monthStartISO : thirtyAgo;
-      const { data: entries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,date").eq("user_id", user.id).gte("date", rangeStart);
+      const { data: entries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,date").eq("family_id", family.familyId).eq("user_id", user.id).gte("date", rangeStart);
       const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
       const weekVals: { day: string; value: number }[] = [];
       for (let i = 6; i >= 0; i--) {
