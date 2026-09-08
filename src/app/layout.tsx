@@ -12,7 +12,6 @@ export const viewport: Viewport = {
   themeColor: "#17654a",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
   viewportFit: "cover",
 };
 
@@ -46,6 +45,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="id" className={`${inter.variable} h-full antialiased`}>
       <body className="min-h-full bg-background text-foreground antialiased">
+        <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 bg-primary text-white px-3 py-1 rounded-full text-xs z-50">
+          Skip ke konten
+        </a>
         <SWRegister />
         {children}
       </body>

@@ -1,6 +1,6 @@
 "use client";
 import { cn } from "@/lib/utils";
-import { BookOpen, Check, Minus, Plus } from "lucide-react";
+import { Check, Minus, Plus } from "lucide-react";
 import type { Habit, Entry } from "@/lib/mock-data";
 import { getHabitProgress } from "@/lib/mock-data";
 
@@ -9,13 +9,11 @@ export function HabitCard({
   entry,
   onToggle,
   onUpdateValue,
-  onRead,
 }: {
   habit: Habit;
   entry: Entry | undefined;
   onToggle: () => void;
   onUpdateValue: (delta: number) => void;
-  onRead?: () => void;
 }) {
   const progress = getHabitProgress(habit, entry);
   const isCompleted = progress === 100;
@@ -60,26 +58,19 @@ export function HabitCard({
               </button>
               <div className="min-w-[86px] text-center">
                 <span className="font-bold text-sm">
-                  {entry?.value ?? 0} / {habit.target}
+                  {Math.min(entry?.value ?? 0, habit.target)} / {habit.target}
                 </span>
                 <span className="text-xs text-muted-foreground ml-1">{habit.unit ?? (habit.type === "DURATION" ? "menit" : "")}</span>
+                {isCompleted && (entry?.value ?? 0) > habit.target && <span className="text-[10px] text-primary ml-1">cap</span>}
               </div>
               <button
                 onClick={() => onUpdateValue(habit.type === "DURATION" ? 5 : 1)}
-                className="h-8 w-8 rounded-full bg-primary text-white flex items-center justify-center hover:bg-[#134d39] active:scale-95 transition-transform shadow-sm"
+                disabled={isCompleted}
+                className="h-8 w-8 rounded-full bg-primary text-white flex items-center justify-center hover:bg-[#134d39] active:scale-95 transition-transform shadow-sm disabled:opacity-40 disabled:pointer-events-none"
                 aria-label="Tambah"
               >
                 <Plus className="h-3.5 w-3.5" />
               </button>
-              {habit.category === "Al-Qur'an" && onRead && (
-                <button
-                  onClick={onRead}
-                  className="h-8 px-3 rounded-full border bg-card flex items-center gap-1.5 text-xs font-medium hover:bg-muted"
-                  aria-label="Baca Quran"
-                >
-                  <BookOpen className="h-3.5 w-3.5" /> Baca
-                </button>
-              )}
             </div>
             <div className="hidden sm:block h-2 flex-1 max-w-[100px] rounded-full bg-muted overflow-hidden ml-1">
               <div className="h-full bg-primary transition-all duration-500" style={{ width: `${progress}%` }} />

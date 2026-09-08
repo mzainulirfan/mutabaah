@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/", "/login", "/onboarding", "/auth/callback", "/manifest.json", "/sw.js"];
+const PUBLIC_PATHS = ["/", "/login", "/daftar", "/onboarding", "/auth/callback", "/manifest.json", "/sw.js", "/join"];
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -25,17 +25,18 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  // Fast path: public & static — jangan panggil auth.getUser() (299ms per nav)
   const pathname = request.nextUrl.pathname;
-  const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith("/_next") || pathname.startsWith("/api/auth"));
+  const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p) || pathname.startsWith("/_next") || pathname.startsWith("/api/auth"));
   const isProtected = ["/beranda", "/mutabaah", "/progress", "/keluarga", "/profil"].some((p) => pathname.startsWith(p));
-  if (isPublic || !isProtected) return supabaseResponse;
+
+  // Selalu refresh session untuk protected (hindari stale cookie), public skip
+  if (!isProtected) return supabaseResponse;
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  if (!user && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", pathname);

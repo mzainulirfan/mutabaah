@@ -57,7 +57,7 @@ export function SWRegister() {
             <Button size="sm" onClick={install} className="rounded-full shrink-0">
               <Download className="h-4 w-4 mr-1" /> Install
             </Button>
-            <button onClick={() => setShowInstall(false)} className="text-muted-foreground text-xs ml-1">
+            <button onClick={() => setShowInstall(false)} aria-label="Tutup" className="h-11 w-11 rounded-full flex items-center justify-center hover:bg-muted shrink-0">
               ✕
             </button>
           </div>

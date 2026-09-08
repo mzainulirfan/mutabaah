@@ -8,7 +8,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, ChevronLeft, ChevronRight, StickyNote, WifiOff, Loader2, Sparkles } from "lucide-react";
 import { enqueue, syncQueue, clearInvalidQueue } from "@/lib/offline-queue";
-import { QuranReader } from "@/components/quran/quran-reader";
 
 type DbHabit = {
   id: string;
@@ -38,9 +37,6 @@ export default function MutabaahPage() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
-  const [readerOpen, setReaderOpen] = useState(false);
-  const [readerHabitId, setReaderHabitId] = useState<string | null>(null);
-  const [readerPage, setReaderPage] = useState(1);
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -320,24 +316,6 @@ export default function MutabaahPage() {
                   entry={entries[h.id]}
                   onToggle={() => handleToggle(h.id)}
                   onUpdateValue={(d) => handleUpdate(h.id, d)}
-                  onRead={
-                    h.category === "Al-Qur'an"
-                      ? () => {
-                          setReaderHabitId(h.id);
-                          // resume last page if any
-                          const supa = createClient();
-                          if (supa) {
-                            supa
-                              .from("mutabaah_reading_positions")
-                              .select("last_page")
-                              .eq("user_id", userId ?? "")
-                              .maybeSingle()
-                              .then(({ data }: any) => setReaderPage(data?.last_page ?? 1));
-                          }
-                          setReaderOpen(true);
-                        }
-                      : undefined
-                  }
                 />
               ))}
             </div>
@@ -351,24 +329,6 @@ export default function MutabaahPage() {
         </div>
       ) : (
         <div className="text-center text-xs text-muted-foreground">{userId ? "Tersinkron otomatis" : "Mode demo — login untuk simpan permanen"}</div>
-      )}
-
-      {readerOpen && readerHabitId && (
-        <QuranReader
-          open={readerOpen}
-          onClose={() => setReaderOpen(false)}
-          habitId={readerHabitId}
-          date={toISO(date)}
-          initialPage={readerPage}
-          onCounted={(page, value) => {
-            // optimistic update like persist
-            setEntries((prev) => {
-              const target = dbHabits?.find((x) => x.id === readerHabitId)?.target_value ?? 1;
-              const status = value >= target ? "COMPLETED" : value > 0 ? "PARTIAL" : "PENDING";
-              return { ...prev, [readerHabitId]: { habitId: readerHabitId, value, status } as Entry };
-            });
-          }}
-        />
       )}
     </div>
   );

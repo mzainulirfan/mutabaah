@@ -17,7 +17,9 @@ export type HabitInput = {
 
 export async function createHabit(input: HabitInput) {
   const supabase = await createClient();
-  if (!supabase) return { id: "demo-habit" };
+  if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Unauthorized");
   const { data, error } = await supabase.from(T_HABITS).insert(input).select().single();
   if (error) throw new Error(error.message);
   revalidatePath("/mutabaah");
@@ -27,7 +29,9 @@ export async function createHabit(input: HabitInput) {
 
 export async function updateHabit(id: string, patch: Partial<HabitInput> & { is_active?: boolean }) {
   const supabase = await createClient();
-  if (!supabase) return;
+  if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Unauthorized");
   const { error } = await supabase.from(T_HABITS).update(patch).eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/mutabaah");
@@ -35,7 +39,9 @@ export async function updateHabit(id: string, patch: Partial<HabitInput> & { is_
 
 export async function deleteHabit(id: string) {
   const supabase = await createClient();
-  if (!supabase) return;
+  if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Unauthorized");
   const { error } = await supabase.from(T_HABITS).delete().eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/mutabaah");
@@ -63,7 +69,10 @@ export async function updateMutabaahEntry(input: {
   if (!isUUID(input.habit_id)) throw new Error(`Invalid habit_id "${input.habit_id}" — expected uuid (habit belum sync, refresh halaman)`);
   if (!isUUID(input.user_id)) throw new Error(`Invalid user_id "${input.user_id}"`);
   const supabase = await createClient();
-  if (!supabase) return { id: "demo-entry" };
+  if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Unauthorized");
+  if (auth.user.id !== input.user_id) throw new Error("Forbidden: user_id mismatch");
   const payload = {
     habit_id: input.habit_id,
     user_id: input.user_id,

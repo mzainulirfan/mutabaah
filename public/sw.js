@@ -23,13 +23,15 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Navigasi: network-first
+  // Navigasi: network-first, hanya cache 200
   if (req.mode === "navigate") {
     e.respondWith(
       fetch(req)
         .then((res) => {
-          const clone = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, clone));
+          if (res.ok && res.type === "basic") {
+            const clone = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, clone));
+          }
           return res;
         })
         .catch(() => caches.match(req).then((cached) => cached || caches.match("/")))
@@ -37,8 +39,8 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Images/fonts/manifest: cache-first
-  if (url.pathname.match(/\.(png|svg|woff2|json)$/) && !url.pathname.startsWith("/_next/")) {
+  // Images/fonts/manifest/quran: cache-first, hanya same-origin quran
+  if (url.pathname.match(/\.(png|svg|woff2|json)$/) && !url.pathname.startsWith("/_next/") && (url.pathname.startsWith("/quran/") || url.pathname.match(/\.(png|svg|woff2)$/))) {
     e.respondWith(
       caches.match(req).then((cached) => {
         if (cached) return cached;

@@ -10,18 +10,15 @@ const T_INVITATIONS = "mutabaah_invitations";
 
 export async function createFamily(formData: FormData) {
   const name = (formData.get("name") as string)?.trim();
-  if (!name) throw new Error("Nama keluarga wajib");
+  if (!name || name.length < 3) throw new Error("Nama keluarga minimal 3 karakter");
   const supabase = await createClient();
-  if (!supabase) return { id: "demo-family", name };
+  if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
   const { data: user } = await supabase.auth.getUser();
   if (!user.user) throw new Error("Unauthorized — login dulu");
-  // Use service role to bypass RLS for the insert (still enforce owner_id = auth.uid())
-  const { createServiceClient } = await import("@/lib/supabase/server");
-  const service = createServiceClient();
-  const client = service ?? supabase;
-  const { data: family, error } = await client.from(T_FAMILIES).insert({ name, owner_id: user.user.id }).select().single();
-  if (error) throw new Error(error.message + " (pastikan sudah run 004_fix_families_insert.sql di SQL Editor)");
-  await client.from(T_MEMBERS).insert({ family_id: family.id, user_id: user.user.id, role: "OWNER" });
+  const { data: family, error } = await supabase.from(T_FAMILIES).insert({ name, owner_id: user.user.id }).select().single();
+  if (error) throw new Error(error.message);
+  const { error: memErr } = await supabase.from(T_MEMBERS).insert({ family_id: family.id, user_id: user.user.id, role: "OWNER" });
+  if (memErr) throw new Error(memErr.message);
   revalidatePath("/keluarga");
   return family;
 }
@@ -50,27 +47,12 @@ export async function createInvitation(familyId: string) {
 
 export async function acceptInvitation(token: string) {
   const supabase = await createClient();
-  if (!supabase) return { ok: true };
-  const token_hash = createHash("sha256").update(token).digest("hex");
-  const { data: inv, error } = await supabase.from(T_INVITATIONS).select("*").eq("token_hash", token_hash).single();
-  if (error || !inv) throw new Error("Undangan tidak valid");
-  if (inv.expires_at && new Date(inv.expires_at) < new Date()) throw new Error("Undangan sudah tidak berlaku.");
-  const { data: user } = await supabase.auth.getUser();
-  if (!user.user) throw new Error("Login dulu");
-  // idempotent: sudah member → return
-  const { data: existing } = await supabase.from(T_MEMBERS).select("id").eq("family_id", inv.family_id).eq("user_id", user.user.id).maybeSingle();
-  if (existing) return { familyId: inv.family_id, already: true };
-  if (inv.used_at) throw new Error("Undangan sudah digunakan");
-  const { error: memErr } = await supabase.from(T_MEMBERS).insert({ family_id: inv.family_id, user_id: user.user.id, role: "MEMBER" });
-  if (memErr) {
-    // race: unique violation → treat as already member
-    if (memErr.message.includes("duplicate") || memErr.code === "23505") return { familyId: inv.family_id, already: true };
-    throw new Error(memErr.message);
-  }
-  // optional single-use: tandai used_at (komentar jika mau multi-use)
-  // await supabase.from(T_INVITATIONS).update({ used_at: new Date().toISOString() }).eq("id", inv.id);
+  if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
+  // gunakan RPC atomik (fix race + used_at + RLS)
+  const { data, error } = await supabase.rpc("accept_invitation", { p_hash: createHash("sha256").update(token).digest("hex") });
+  if (error) throw new Error(error.message);
   revalidatePath("/keluarga");
-  return { familyId: inv.family_id };
+  return { familyId: data as string };
 }
 
 export async function removeFamilyMember(familyId: string, userId: string) {

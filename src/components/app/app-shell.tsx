@@ -76,7 +76,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        <nav className="flex-1 p-3 space-y-1">
+        <nav aria-label="Navigasi utama" className="flex-1 p-3 space-y-1">
           <div className="text-[11px] font-semibold tracking-widest uppercase text-muted-foreground px-3 pt-2 pb-1">Menu</div>
           {nav.map((item) => {
             const active = pathname === item.href || pathname.startsWith(item.href + "/");
@@ -84,8 +84,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors",
+                  "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors min-h-[44px]",
                   active ? "bg-[var(--primary-soft)] text-primary border border-primary/10" : "text-muted-foreground hover:bg-muted hover:text-foreground border border-transparent"
                 )}
               >
@@ -147,10 +148,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 max-w-[1100px] w-full mx-auto px-4 lg:px-8 py-6 pb-28 lg:pb-8">{children}</main>
+        <main id="main" className="flex-1 max-w-[1100px] w-full mx-auto px-4 lg:px-8 py-6 pb-28 lg:pb-8">{children}</main>
 
         {/* Bottom Nav — full */}
-        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-card border-t">
+        <nav aria-label="Navigasi mobile" className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-card border-t pb-[env(safe-area-inset-bottom)]">
           <div className="mx-auto flex items-center justify-around h-[64px] px-2">
             {nav.map((item) => {
               const active = pathname === item.href;
@@ -158,7 +159,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={cn("flex flex-col items-center justify-center gap-1 min-w-[56px] py-1.5 rounded-xl transition-colors", active ? "text-primary" : "text-muted-foreground")}
+                  aria-current={active ? "page" : undefined}
+                  className={cn("flex flex-col items-center justify-center gap-1 min-w-[56px] py-1.5 rounded-xl transition-colors min-h-[44px] min-w-[44px]", active ? "text-primary" : "text-muted-foreground")}
                 >
                   <span className={cn("h-7 w-7 rounded-full flex items-center justify-center", active && "bg-primary text-white shadow-sm")}>
                     <item.icon className="h-[18px] w-[18px]" />
