@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ProgressRing } from "@/components/app/progress-ring";
-import { Flame, ChevronRight, CheckCircle2, Users, Sparkles, TrendingUp, TrendingDown, Bell, X, ArrowRight } from "lucide-react";
+import { Flame, ChevronRight, CheckCircle2, Users, Sparkles, TrendingUp, TrendingDown, Bell, X, ArrowRight, Quote } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { HabitCard } from "@/components/app/habit-card";
@@ -32,6 +32,8 @@ export default function BerandaPage() {
   const [userName, setUserName] = useState("Ayah");
   const [selfDelta, setSelfDelta] = useState<number | null>(null);
   const [selfActive, setSelfActive] = useState(0);
+  const [quotes, setQuotes] = useState<{ date: string; label: string; text: string }[]>([]);
+  const [quoteIdx, setQuoteIdx] = useState(0);
   const [members, setMembers] = useState<{ id: string; name: string; progress: number; streak: number; role: string }[]>([]);
   const [familyProgress, setFamilyProgress] = useState(0);
   const [delta, setDelta] = useState<number | null>(null);
@@ -64,6 +66,15 @@ export default function BerandaPage() {
     return () => clearTimeout(t);
   }, []);
 
+  // Slideshow refleksi — berganti tiap 2 detik bila lebih dari 1;
+  // hormati preferensi reduced motion.
+  useEffect(() => {
+    if (quotes.length < 2) return;
+    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const t = setInterval(() => setQuoteIdx((i) => (i + 1) % quotes.length), 2000);
+    return () => clearInterval(t);
+  }, [quotes.length]);
+
   useEffect(() => {
     // setState hanya di dalam kelanjutan async (pola fetch-on-mount yang diizinkan),
     // bukan sinkron di badan effect.
@@ -87,7 +98,7 @@ export default function BerandaPage() {
       const [{ data: todayEntries }, { data: yesterdayEntries }, { data: last30 }, { data: recentEntries }] = await Promise.all([
         supabase.from("mutabaah_entries").select("user_id,habit_id,value,status,context").eq("family_id", ctx.familyId).eq("date", today),
         supabase.from("mutabaah_entries").select("user_id,habit_id,value,status").eq("family_id", ctx.familyId).eq("date", yesterday),
-        supabase.from("mutabaah_entries").select("user_id,date,value,habit_id,status").eq("family_id", ctx.familyId).gte("date", thirtyAgo),
+        supabase.from("mutabaah_entries").select("user_id,date,value,habit_id,status,note").eq("family_id", ctx.familyId).gte("date", thirtyAgo),
         supabase.from("mutabaah_entries").select("user_id,habit_id,status,context,completed_at").eq("family_id", ctx.familyId).order("completed_at", { ascending: false }).limit(5),
       ]);
       const profileMap = new Map(ctx.members.map((m) => [m.user_id, m.name] as const));
@@ -100,6 +111,23 @@ export default function BerandaPage() {
       const todayMap = new Map(((todayEntries ?? []) as EntryRow[]).map((e) => [`${e.user_id}:${e.habit_id}`, e]));
       const yMap = new Map(((yesterdayEntries ?? []) as EntryRow[]).map((e) => [`${e.user_id}:${e.habit_id}`, e]));
       const last30Map = new Map(((last30 ?? []) as EntryRow[]).map((e) => [`${e.user_id}|${e.date}|${e.habit_id}`, e]));
+      // Refleksi milik sendiri 30 hari terakhir — terbaru dulu, satu per tanggal.
+      const seenDates = new Set<string>();
+      const quoteRows: { date: string; label: string; text: string }[] = [];
+      for (const e of ((last30 ?? []) as EntryRow[])) {
+        const text = e.note?.trim() ?? "";
+        if (e.user_id !== user.id || !text || seenDates.has(e.date)) continue;
+        seenDates.add(e.date);
+        const [yy, mm, dd] = e.date.split("-").map(Number);
+        quoteRows.push({
+          date: e.date,
+          label: new Date(yy, mm - 1, dd).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "short" }),
+          text,
+        });
+      }
+      quoteRows.sort((a, b) => (a.date < b.date ? 1 : -1));
+      setQuotes(quoteRows.slice(0, 7));
+      setQuoteIdx(0);
       const memberStats: typeof members = [];
       let familySum = 0; let familySumYesterday = 0;
       let myDelta: number | null = null; let myActive = 0;
@@ -386,6 +414,41 @@ export default function BerandaPage() {
           </div>
         </dl>
       </div>
+
+      {/* Refleksi — slideshow kutipan, di bawah hero agar terlihat tanpa scroll */}
+      {quotes.length > 0 && (
+        <section aria-label="Refleksi terakhir" aria-live="polite">
+          <Card className="rounded-[20px] p-5 bg-[var(--primary-soft)]/40 border-primary/10">
+            <div className="flex items-start gap-3">
+              <span className="h-9 w-9 rounded-xl bg-card border border-primary/10 flex items-center justify-center shrink-0" aria-hidden="true">
+                <Quote className="h-4 w-4 text-primary" />
+              </span>
+              <div className="flex-1 min-w-0">
+                <blockquote key={quoteIdx} className="text-[15px] leading-7 font-medium">
+                  “{quotes[quoteIdx % quotes.length].text}”
+                </blockquote>
+                <p className="text-xs text-muted-foreground mt-1.5 capitalize tabular-nums">
+                  Refleksimu · {quotes[quoteIdx % quotes.length].label}
+                </p>
+              </div>
+            </div>
+            {quotes.length > 1 && (
+              <div className="mt-3 flex items-center justify-center gap-1.5" role="group" aria-label="Pilih refleksi">
+                {quotes.map((q, i) => (
+                  <button
+                    key={q.date}
+                    type="button"
+                    onClick={() => setQuoteIdx(i)}
+                    aria-label={`Tampilkan refleksi ${q.label}`}
+                    aria-pressed={i === quoteIdx % quotes.length}
+                    className={`h-2 rounded-full transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${i === quoteIdx % quotes.length ? "w-5 bg-primary" : "w-2 bg-black/15 hover:bg-black/25"}`}
+                  />
+                ))}
+              </div>
+            )}
+          </Card>
+        </section>
+      )}
 
       {/* Anggota & kabar — hanya untuk orang tua; anak hanya melihat miliknya sendiri */}
       {!isMemberOnly && (

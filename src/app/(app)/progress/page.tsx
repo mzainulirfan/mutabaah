@@ -156,7 +156,8 @@ export default function ProgressPage() {
     }
     const wajibDone = items.filter((i) => i.category === "Ibadah Wajib" && i.status === "done");
     const berjamaah = wajibDone.filter((i) => i.context === "BERJAMAAH").length;
-    return { day, iso, label: calMeta.label(day), progress: dailyProgress(items), items, groups, strip, berjamaah, sendiri: wajibDone.length - berjamaah };
+    const note = dayEntries.map((x) => (x.date === iso ? x.note?.trim() : "")).find((n) => n) ?? "";
+    return { day, iso, label: calMeta.label(day), progress: dailyProgress(items), items, groups, strip, berjamaah, sendiri: wajibDone.length - berjamaah, note };
   }, [selectedDay, calMeta, dayEntries, habits]);
 
   useEffect(() => {
@@ -178,7 +179,7 @@ export default function ProgressPage() {
       const thirtyAgo = localDateKey(daysAgoLocal(29, nowForRange));
       const monthStartISO = `${nowForRange.getFullYear()}-${String(nowForRange.getMonth() + 1).padStart(2, "0")}-01`;
       const rangeStart = monthStartISO < thirtyAgo ? monthStartISO : thirtyAgo;
-      const { data: entries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,date,context").eq("family_id", family.familyId).eq("user_id", targetId).gte("date", rangeStart);
+      const { data: entries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,date,context,note").eq("family_id", family.familyId).eq("user_id", targetId).gte("date", rangeStart);
       const entryRows = (entries ?? []) as EntryRow[];
       setDayEntries(entryRows);
       const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
@@ -562,6 +563,12 @@ export default function ProgressPage() {
             </button>
           </div>
           <div className="mt-4 space-y-5 max-h-[55dvh] overflow-auto">
+            {dayDetail.note && (
+              <figure className="rounded-2xl bg-[var(--primary-soft)]/60 border border-primary/10 px-4 py-3">
+                <blockquote className="text-sm leading-6">“{dayDetail.note}”</blockquote>
+                <figcaption className="text-[11px] text-muted-foreground mt-1">Refleksi hari itu · privat</figcaption>
+              </figure>
+            )}
             {dayDetail.strip.some((s) => s.item) && (
               <div className="grid grid-cols-5 gap-1.5" role="list" aria-label="Sholat lima waktu">
                 {dayDetail.strip.map((s) => {
