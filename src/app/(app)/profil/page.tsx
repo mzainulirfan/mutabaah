@@ -151,6 +151,12 @@ export default function ProfilPage() {
             <Link href="/onboarding" className="inline-flex items-center justify-center mt-5 rounded-full bg-primary text-primary-foreground text-sm font-medium px-5 py-2.5 min-h-[44px] hover:bg-[#134d39] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               Buat Keluarga
             </Link>
+            <div className="mt-3 text-sm">
+              <span className="text-muted-foreground">Punya kode undangan?</span>{" "}
+              <Link href="/gabung" className="font-medium text-primary underline underline-offset-2">
+                Gabung keluarga
+              </Link>
+            </div>
           </Card>
         ) : (
           <Card className="rounded-[20px] p-5">

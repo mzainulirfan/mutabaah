@@ -256,6 +256,12 @@ export default function OnboardingPage() {
                   {creating && <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" />}
                   {creating ? "Membuat keluarga…" : "Buat keluarga dan lanjut"}
                 </Button>
+                <p className="mt-4 text-center text-sm">
+                  <span className="text-muted-foreground">Dapat kode undangan dari keluarga?</span>{" "}
+                  <Link href="/gabung" className="font-medium text-primary underline underline-offset-2">
+                    Gabung saja
+                  </Link>
+                </p>
               </div>
             </Card>
           )}

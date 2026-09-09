@@ -18,6 +18,7 @@ Aplikasi membutuhkan env Supabase — tanpa itu halaman menampilkan error konfig
 2. SQL Editor → jalankan berurutan:
    - `supabase/migrations/001_initial_schema.sql`
    - `supabase/migrations/002_rls.sql`
+   - `003_prefix_rename.sql` … `010_invite_code.sql` (urutan nomor)
 3. Auth → enable Email provider
 4. Isi `.env.local` sesuai `.env.example`
 5. (opsional) `supabase/seed.sql` untuk data contoh

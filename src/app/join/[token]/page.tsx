@@ -19,8 +19,11 @@ export default async function JoinPage({ params }: { params: Promise<{ token: st
         <Card className="w-full max-w-[480px] p-8 text-center">
           <AlertCircle className="h-10 w-10 mx-auto text-amber-600" />
           <h1 className="font-bold text-lg mt-3">Undangan tidak valid</h1>
-          <p className="text-sm text-muted-foreground mt-2">Token tidak ditemukan. Minta orang tua buat undangan baru dari Profil › Keluarga › Anggota.</p>
-          <Link href="/login" className="block mt-6">
+          <p className="text-sm text-muted-foreground mt-2">Token tidak ditemukan. Minta orang tua buat undangan baru — atau gabung dengan kode 6 huruf.</p>
+          <Link href="/gabung" className="block mt-6">
+            <Button className="w-full">Gabung dengan kode</Button>
+          </Link>
+          <Link href="/login" className="block mt-2">
             <Button variant="secondary" className="w-full">
               Ke Login
             </Button>

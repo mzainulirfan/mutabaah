@@ -192,7 +192,7 @@ export default function BerandaPage() {
           <p className="text-sm text-muted-foreground mt-1 max-w-[36ch] mx-auto leading-6">Buat keluarga, undang anggota tersayang, lalu pilih target pertama bersama. Pelan-pelan, yang penting jalan terus.</p>
           <div className="mt-6 flex justify-center gap-2">
             <Link href="/onboarding"><Button className="rounded-full">Buat Keluarga</Button></Link>
-            <Link href="/login"><Button variant="secondary" className="rounded-full">Saya sudah punya akun</Button></Link>
+            <Link href="/gabung"><Button variant="secondary" className="rounded-full">Gabung pakai kode</Button></Link>
           </div>
         </Card>
       </div>

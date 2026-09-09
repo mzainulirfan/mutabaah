@@ -31,6 +31,15 @@ export async function updateFamily(familyId: string, formData: FormData) {
   revalidatePath("/keluarga");
 }
 
+const INVITE_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+function randomInviteCode(length = 6) {
+  const bytes = randomBytes(length);
+  let code = "";
+  for (let i = 0; i < length; i++) code += INVITE_CODE_ALPHABET[bytes[i] % INVITE_CODE_ALPHABET.length];
+  return code;
+}
+
 export async function createInvitation(familyId: string) {
   const supabase = await createClient();
   if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
@@ -39,10 +48,16 @@ export async function createInvitation(familyId: string) {
   const token = randomBytes(24).toString("hex");
   const token_hash = createHash("sha256").update(token).digest("hex");
   const expires_at = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
-  const { error } = await supabase.from(T_INVITATIONS).insert({ family_id: familyId, created_by: user.user.id, token_hash, expires_at });
-  if (error) throw new Error(error.message);
+  // Kode 6 karakter bisa bertabrakan — coba lagi hingga 3x bila unik dilanggar.
+  let code = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    code = randomInviteCode();
+    const { error } = await supabase.from(T_INVITATIONS).insert({ family_id: familyId, created_by: user.user.id, token_hash, code, expires_at });
+    if (!error) break;
+    if (!/duplicate|unique/i.test(error.message) || attempt === 2) throw new Error(error.message);
+  }
   const url = `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/join/${token}`;
-  return { token, url };
+  return { token, url, code };
 }
 
 export async function acceptInvitation(token: string) {
@@ -50,6 +65,17 @@ export async function acceptInvitation(token: string) {
   if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
   // gunakan RPC atomik (fix race + used_at + RLS)
   const { data, error } = await supabase.rpc("accept_invitation", { p_hash: createHash("sha256").update(token).digest("hex") });
+  if (error) throw new Error(error.message);
+  revalidatePath("/keluarga");
+  return { familyId: data as string };
+}
+
+export async function acceptInvitationByCode(code: string) {
+  const supabase = await createClient();
+  if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
+  const clean = code.trim().toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(clean)) throw new Error("Kode terdiri dari 6 huruf/angka.");
+  const { data, error } = await supabase.rpc("accept_invitation_by_code", { p_code: clean });
   if (error) throw new Error(error.message);
   revalidatePath("/keluarga");
   return { familyId: data as string };

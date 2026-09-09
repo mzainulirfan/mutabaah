@@ -18,8 +18,10 @@ export default function AnggotaPage() {
   const [members, setMembers] = useState<{ id: string; name: string; role: string }[]>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteUrl, setInviteUrl] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [inviteLoading, setInviteLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -51,7 +53,9 @@ export default function AnggotaPage() {
       const { createInvitation } = await import("@/lib/actions/family");
       const res = await createInvitation(familyId);
       setInviteUrl(res.url);
+      setInviteCode(res.code);
       setCopied(false);
+      setCodeCopied(false);
     } catch (e: unknown) { setMsg(getErrorMessage(e)); } finally { setInviteLoading(false); }
   };
 
@@ -62,6 +66,15 @@ export default function AnggotaPage() {
       setCopied(true);
       setMsg("Link undangan tersalin. Bagikan ke anggota keluarga.");
     } catch { setMsg("Gagal menyalin. Salin manual link di atas."); }
+  };
+
+  const handleCopyCode = async () => {
+    if (!inviteCode) return;
+    try {
+      await navigator.clipboard.writeText(inviteCode);
+      setCodeCopied(true);
+      setMsg("Kode undangan tersalin. Anggota cukup ketik kode ini di halaman Gabung.");
+    } catch { setMsg("Gagal menyalin. Catat manual kode di atas."); }
   };
 
   const handleRemoveMember = async (id: string, name: string) => {
@@ -93,7 +106,7 @@ export default function AnggotaPage() {
         </Link>
         <div className="flex items-center justify-between gap-2 mt-2">
           <h1 className="text-[26px] font-bold tracking-tight leading-tight">Anggota</h1>
-          <Button size="sm" className="rounded-full shrink-0" onClick={() => { setInviteUrl(""); setCopied(false); setInviteOpen(true); }}>
+          <Button size="sm" className="rounded-full shrink-0" onClick={() => { setInviteUrl(""); setInviteCode(""); setCopied(false); setCodeCopied(false); setInviteOpen(true); }}>
             <Link2 className="h-4 w-4 mr-1.5" /> Undang anggota
           </Button>
         </div>
@@ -130,19 +143,36 @@ export default function AnggotaPage() {
               <X className="h-4 w-4" />
             </Button>
           </div>
-          <p className="text-sm text-muted-foreground mt-1 leading-6">Buat link, bagikan ke keluarga. Mereka cukup buka link lalu masuk — langsung tergabung. Link berlaku 7 hari.</p>
+          <p className="text-sm text-muted-foreground mt-1 leading-6">Buat undangan, bagikan ke keluarga. Mereka cukup buka link — atau ketik kode 6 huruf di halaman Gabung. Berlaku 7 hari, sekali pakai.</p>
           {!inviteUrl ? (
             <Button className="w-full rounded-full mt-5 min-h-[44px]" onClick={handleCreateInvite} disabled={inviteLoading}>
-              {inviteLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Link2 className="h-4 w-4 mr-1.5" />} Buat link undangan
+              {inviteLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Link2 className="h-4 w-4 mr-1.5" />} Buat undangan
             </Button>
           ) : (
             <div className="mt-5 space-y-3">
-              <div className="rounded-xl border bg-muted px-3 py-2.5 text-xs truncate font-mono">{inviteUrl}</div>
-              <Button className="w-full rounded-full min-h-[44px]" onClick={handleCopy}>
-                <Copy className="h-4 w-4 mr-1.5" /> {copied ? "Tersalin ✓" : "Salin link"}
-              </Button>
-              <button onClick={handleCreateInvite} disabled={inviteLoading} className="w-full text-xs text-muted-foreground underline underline-offset-2">
-                Buat link baru
+              <div>
+                <div className="text-xs font-semibold mb-1.5">Kode undangan</div>
+                <button
+                  type="button"
+                  onClick={handleCopyCode}
+                  className="w-full rounded-2xl border-2 border-dashed border-primary/30 bg-[var(--primary-soft)]/50 px-3 py-3.5 text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={`Salin kode undangan ${inviteCode}`}
+                >
+                  <span className="font-mono font-bold text-2xl tracking-[0.3em] text-primary">{inviteCode}</span>
+                  <span className="mt-1 flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                    <Copy className="h-3.5 w-3.5" /> {codeCopied ? "Tersalin ✓" : "Ketuk untuk menyalin"}
+                  </span>
+                </button>
+              </div>
+              <div>
+                <div className="text-xs font-semibold mb-1.5">Atau link undangan</div>
+                <div className="rounded-xl border bg-muted px-3 py-2.5 text-xs truncate font-mono">{inviteUrl}</div>
+                <Button variant="secondary" className="w-full rounded-full min-h-[44px] mt-2" onClick={handleCopy}>
+                  <Copy className="h-4 w-4 mr-1.5" /> {copied ? "Tersalin ✓" : "Salin link"}
+                </Button>
+              </div>
+              <button onClick={() => { setInviteUrl(""); setInviteCode(""); setCopied(false); setCodeCopied(false); }} className="w-full text-xs text-muted-foreground underline underline-offset-2">
+                Tutup
               </button>
             </div>
           )}
