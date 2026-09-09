@@ -1,4 +1,13 @@
 import type { HabitType } from "@/lib/mock-data";
+import type {
+  DbClient,
+  DbUser,
+  FamilyMemberRow,
+  FamilyNameRow,
+  HabitListRow,
+  MemberLinkRow,
+  ProfileRow,
+} from "@/lib/supabase/types";
 
 // Cache data keluarga yang jarang berubah (nama, anggota, habit).
 // Entri harian TIDAK di-cache — selalu diambil fresh per halaman.
@@ -31,12 +40,12 @@ export function clearFamilyCache() {
 
 // Navigasi klien tidak perlu memvalidasi token ke jaringan berulang kali.
 // Semua query data tetap dilindungi oleh RLS dan server action tetap memakai getUser().
-export async function getSessionUser(supabase: any) {
+export async function getSessionUser(supabase: DbClient): Promise<DbUser | null> {
   const { data: { session } } = await supabase.auth.getSession();
   return session?.user ?? null;
 }
 
-export function getFamilyContext(supabase: any, userId: string): Promise<FamilyContext | null> {
+export function getFamilyContext(supabase: DbClient, userId: string): Promise<FamilyContext | null> {
   const hit = cache.get(userId);
   if (hit && Date.now() - hit.at < TTL) return Promise.resolve(hit.ctx);
   const pending = pendingContexts.get(userId);
@@ -46,16 +55,17 @@ export function getFamilyContext(supabase: any, userId: string): Promise<FamilyC
   return request;
 }
 
-async function loadFamilyContext(supabase: any, userId: string): Promise<FamilyContext | null> {
+async function loadFamilyContext(supabase: DbClient, userId: string): Promise<FamilyContext | null> {
 
-  const { data: mem } = await supabase
+  const { data: memData } = await supabase
     .from("mutabaah_family_members")
     .select("family_id,role")
     .eq("user_id", userId)
     .maybeSingle();
+  const mem = memData as MemberLinkRow | null;
   if (!mem) return null;
 
-  const [{ data: fam }, { data: famMembers }, { data: habitRows }] = await Promise.all([
+  const [{ data: famData }, { data: famMembersData }, { data: habitRowsData }] = await Promise.all([
     supabase.from("mutabaah_families").select("name").eq("id", mem.family_id).single(),
     supabase.from("mutabaah_family_members").select("user_id,role").eq("family_id", mem.family_id),
     supabase
@@ -65,16 +75,20 @@ async function loadFamilyContext(supabase: any, userId: string): Promise<FamilyC
       .eq("is_active", true)
       .order("sort_order"),
   ]);
-  const ids = (famMembers ?? []).map((m: any) => m.user_id);
-  const { data: profiles } = ids.length
+  const fam = famData as FamilyNameRow | null;
+  const famMembers = (famMembersData ?? []) as FamilyMemberRow[];
+  const habitRows = (habitRowsData ?? []) as HabitListRow[];
+  const ids = famMembers.map((m) => m.user_id);
+  const { data: profilesData } = ids.length
     ? await supabase.from("mutabaah_profiles").select("id,name").in("id", ids)
-    : { data: [] as any[] };
+    : { data: [] as ProfileRow[] };
+  const profiles = (profilesData ?? []) as ProfileRow[];
 
-  const members: FamilyMember[] = (famMembers ?? []).map((m: any) => {
-    const p = (profiles ?? []).find((x: any) => x.id === m.user_id);
-    return { user_id: m.user_id, role: m.role, name: (p?.name as string) ?? m.user_id.slice(0, 6) };
+  const members: FamilyMember[] = famMembers.map((m) => {
+    const p = profiles.find((x) => x.id === m.user_id);
+    return { user_id: m.user_id, role: m.role, name: p?.name ?? m.user_id.slice(0, 6) };
   });
-  const habits: FamilyHabit[] = (habitRows ?? []).map((h: any, i: number) => ({
+  const habits: FamilyHabit[] = habitRows.map((h, i) => ({
     id: h.id,
     name: h.name,
     category: h.category,
@@ -87,7 +101,7 @@ async function loadFamilyContext(supabase: any, userId: string): Promise<FamilyC
   const ctx: FamilyContext = {
     familyId: mem.family_id,
     role: mem.role,
-    familyName: (fam as any)?.name ?? "Keluarga",
+    familyName: fam?.name ?? "Keluarga",
     members,
     habits,
   };

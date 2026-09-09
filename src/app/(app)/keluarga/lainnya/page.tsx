@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Check, ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { getErrorMessage } from "@/lib/utils";
 import { clearFamilyCache, getFamilyContext, getSessionUser } from "@/lib/family-context";
 
 export default function LainnyaPage() {
@@ -46,7 +47,7 @@ export default function LainnyaPage() {
       clearFamilyCache();
       setFamily({ ...family, name: editName.trim() });
       setMsg("Nama keluarga diperbarui.");
-    } catch (e: any) { setMsg(e.message); } finally { setSavingName(false); }
+    } catch (e: unknown) { setMsg(getErrorMessage(e)); } finally { setSavingName(false); }
   };
 
   if (loading) {
@@ -61,8 +62,8 @@ export default function LainnyaPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/keluarga" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground rounded-full px-2 py-1 -ml-2">
-          <ChevronLeft className="h-4 w-4" /> Keluarga
+        <Link href="/profil" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground rounded-full px-2 py-1 -ml-2">
+          <ChevronLeft className="h-4 w-4" /> Profil
         </Link>
         <h1 className="text-[26px] font-bold tracking-tight leading-tight mt-2">Lainnya</h1>
         <p className="text-sm text-muted-foreground mt-1">Nama keluarga dan tampilan.</p>

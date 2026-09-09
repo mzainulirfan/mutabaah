@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, ClipboardCheck, BarChart3, Users2, User, LogOut, Sparkles } from "lucide-react";
+import { LayoutDashboard, ClipboardCheck, BarChart3, User, LogOut, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getFamilyContext, getSessionUser } from "@/lib/family-context";
@@ -11,7 +11,6 @@ const parentNav = [
   { href: "/beranda", label: "Beranda", icon: LayoutDashboard },
   { href: "/mutabaah", label: "Mutabaah", icon: ClipboardCheck },
   { href: "/progress", label: "Progress", icon: BarChart3 },
-  { href: "/keluarga", label: "Keluarga", icon: Users2 },
   { href: "/profil", label: "Profil", icon: User },
 ];
 
@@ -26,7 +25,6 @@ const pageTitles: Record<string, string> = {
   "/beranda": "Beranda",
   "/mutabaah": "Mutabaah",
   "/progress": "Progress",
-  "/keluarga": "Keluarga",
   "/profil": "Profil",
 };
 

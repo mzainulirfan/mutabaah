@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Check, AlertCircle, Users, Loader2 } from "lucide-react";
+import { Check, AlertCircle, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { createHash } from "crypto";
 import { redirect } from "next/navigation";
@@ -34,7 +34,7 @@ export default async function JoinPage({ params }: { params: Promise<{ token: st
         <Card className="w-full max-w-[480px] p-8 text-center">
           <AlertCircle className="h-10 w-10 mx-auto text-amber-600" />
           <h1 className="font-bold text-lg mt-3">Undangan tidak valid</h1>
-          <p className="text-sm text-muted-foreground mt-2">Token tidak ditemukan. Minta parent buat undangan baru di /keluarga.</p>
+          <p className="text-sm text-muted-foreground mt-2">Token tidak ditemukan. Minta orang tua buat undangan baru dari Profil › Keluarga › Anggota.</p>
           <Link href="/login" className="block mt-6">
             <Button variant="secondary" className="w-full">
               Ke Login

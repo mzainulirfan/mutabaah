@@ -3,9 +3,14 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Download, WifiOff } from "lucide-react";
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => void;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+};
+
 export function SWRegister() {
   const [offline, setOffline] = useState(false);
-  const [deferred, setDeferred] = useState<any>(null);
+  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstall, setShowInstall] = useState(false);
 
   useEffect(() => {
@@ -17,9 +22,10 @@ export function SWRegister() {
     window.addEventListener("online", on);
     window.addEventListener("offline", on);
 
-    const handler = (e: any) => {
-      e.preventDefault();
-      setDeferred(e);
+    const handler = (e: Event) => {
+      const promptEvent = e as BeforeInstallPromptEvent;
+      promptEvent.preventDefault();
+      setDeferred(promptEvent);
       setShowInstall(true);
     };
     window.addEventListener("beforeinstallprompt", handler);

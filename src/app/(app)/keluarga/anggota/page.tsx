@@ -1,11 +1,12 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link2, Trash2, Copy, Check, Loader2, ChevronLeft, X } from "lucide-react";
 import Link from "next/link";
 import { Sheet } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";
+import { getErrorMessage } from "@/lib/utils";
 import { clearFamilyCache, getFamilyContext, getSessionUser } from "@/lib/family-context";
 
 const roleLabel: Record<string, string> = { OWNER: "Pemilik", PARENT: "Orang tua", MEMBER: "Anggota" };
@@ -21,7 +22,7 @@ export default function AnggotaPage() {
   const [copied, setCopied] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!supabase) { setLoading(false); return; }
     const user = await getSessionUser(supabase);
     if (!user) { setLoading(false); return; }
@@ -30,9 +31,13 @@ export default function AnggotaPage() {
     setFamilyId(family.familyId);
     setMembers(family.members.map((member) => ({ id: member.user_id, name: member.name, role: member.role })));
     setLoading(false);
-  };
+  }, [supabase]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    void (async () => {
+      await load();
+    })();
+  }, [load]);
 
   useEffect(() => {
     if (!msg) return;
@@ -48,7 +53,7 @@ export default function AnggotaPage() {
       const res = await createInvitation(familyId);
       setInviteUrl(res.url);
       setCopied(false);
-    } catch (e: any) { setMsg(e.message); } finally { setInviteLoading(false); }
+    } catch (e: unknown) { setMsg(getErrorMessage(e)); } finally { setInviteLoading(false); }
   };
 
   const handleCopy = async () => {
@@ -69,7 +74,7 @@ export default function AnggotaPage() {
       clearFamilyCache();
       setMembers((prev) => prev.filter((x) => x.id !== id));
       setMsg(`${name} sudah dikeluarkan dari keluarga.`);
-    } catch (e: any) { setMsg(e.message); }
+    } catch (e: unknown) { setMsg(getErrorMessage(e)); }
   };
 
   if (loading) {
@@ -84,8 +89,8 @@ export default function AnggotaPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/keluarga" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground rounded-full px-2 py-1 -ml-2">
-          <ChevronLeft className="h-4 w-4" /> Keluarga
+        <Link href="/profil" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground rounded-full px-2 py-1 -ml-2">
+          <ChevronLeft className="h-4 w-4" /> Profil
         </Link>
         <div className="flex items-center justify-between gap-2 mt-2">
           <h1 className="text-[26px] font-bold tracking-tight leading-tight">Anggota</h1>

@@ -29,14 +29,15 @@ export async function updateSession(request: NextRequest) {
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p) || pathname.startsWith("/_next") || pathname.startsWith("/api/auth"));
   const isProtected = ["/beranda", "/mutabaah", "/progress", "/keluarga", "/profil"].some((p) => pathname.startsWith(p));
 
-  // Selalu refresh session untuk protected (hindari stale cookie), public skip
+  // Protected routes: cukup baca sesi dari cookie (tanpa network).
+  // Validasi penuh tetap dilakukan per halaman via auth.getUser() + RLS.
   if (!isProtected) return supabaseResponse;
 
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  if (!user && !isPublic) {
+  if (!session && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", pathname);

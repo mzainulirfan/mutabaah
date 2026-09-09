@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      // Hub /keluarga dilebur ke /profil (seksi Keluarga); sub-halaman /keluarga/* tetap ada.
+      { source: "/keluarga", destination: "/profil", permanent: true },
+    ];
+  },
   async headers() {
     return [
       {

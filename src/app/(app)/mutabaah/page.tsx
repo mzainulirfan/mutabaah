@@ -1,7 +1,8 @@
 "use client";
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { Entry } from "@/lib/mock-data";
+import type { Entry, HabitCategory } from "@/lib/mock-data";
 import { HabitCard } from "@/components/app/habit-card";
 import { ProgressRing } from "@/components/app/progress-ring";
 import { Card } from "@/components/ui/card";
@@ -9,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { StickyNote, WifiOff, Sparkles } from "lucide-react";
 import { enqueue, syncQueue, clearInvalidQueue } from "@/lib/offline-queue";
 import { localDateKey } from "@/lib/local-date";
+import type { EntryRow } from "@/lib/supabase/types";
+import { getErrorMessage } from "@/lib/utils";
 import { getFamilyContext, getSessionUser } from "@/lib/family-context";
 
 type DbHabit = {
@@ -21,6 +24,7 @@ type DbHabit = {
 };
 
 export default function MutabaahPage() {
+  const router = useRouter();
   const [dbHabits, setDbHabits] = useState<DbHabit[] | null>(null);
   const [entries, setEntries] = useState<Record<string, Entry>>({});
   const [date, setDate] = useState(() => new Date());
@@ -74,7 +78,7 @@ export default function MutabaahPage() {
         setDbHabits(family.habits);
         const { data: dbEntries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,note,context").eq("family_id", family.familyId).eq("user_id", user.id).eq("date", iso);
         const map: Record<string, Entry> = {};
-        (dbEntries ?? []).forEach((e: any) => {
+        ((dbEntries ?? []) as EntryRow[]).forEach((e) => {
           map[e.habit_id] = { habitId: e.habit_id, value: Number(e.value), status: e.status, note: e.note ?? undefined, context: e.context ?? null };
         });
         setEntries(map);
@@ -82,8 +86,8 @@ export default function MutabaahPage() {
         setNoteText(saved);
         setNoteLoaded(saved);
         setNoteSaved(!!saved);
-      } catch (e: any) {
-        setSyncError(e.message ?? "Gagal memuat");
+      } catch (e: unknown) {
+        setSyncError(getErrorMessage(e, "Gagal memuat"));
       } finally {
         setLoading(false);
       }
@@ -92,7 +96,9 @@ export default function MutabaahPage() {
   );
 
   useEffect(() => {
-    load(date);
+    void (async () => {
+      await load(date);
+    })();
   }, [load, date]);
 
   useEffect(() => {
@@ -130,12 +136,13 @@ export default function MutabaahPage() {
     const doSync = () =>
       syncQueue(async (e) => {
         const { updateMutabaahEntry } = await import("@/lib/actions/habit");
-        await updateMutabaahEntry({ habit_id: e.habit_id, user_id: userId, date: e.date, value: e.value, status: e.status as any, note: e.note, context: e.context ?? null });
+        await updateMutabaahEntry({ habit_id: e.habit_id, user_id: userId, date: e.date, value: e.value, status: e.status as Entry["status"], note: e.note, context: e.context ?? null });
       })
         .then(() => setSyncError(null))
-        .catch((err: any) => {
-          if (err?.message?.includes("Invalid habit_id")) clearInvalidQueue();
-          setSyncError(err?.message?.includes("Invalid habit_id") ? "Data lama dibersihkan — coba lagi." : "Perubahan belum tersimpan. Coba lagi.");
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : "";
+          if (message.includes("Invalid habit_id")) clearInvalidQueue();
+          setSyncError(message.includes("Invalid habit_id") ? "Data lama dibersihkan — coba lagi." : "Perubahan belum tersimpan. Coba lagi.");
         });
     window.addEventListener("online", doSync);
     doSync();
@@ -175,8 +182,8 @@ export default function MutabaahPage() {
       const { updateMutabaahEntry } = await import("@/lib/actions/habit");
       await updateMutabaahEntry({ habit_id: habitId, user_id: userId, date: iso, value, status, context: context ?? null });
       setSyncError(null);
-    } catch (e: any) {
-      if (e?.message?.includes("Invalid habit_id")) {
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message.includes("Invalid habit_id")) {
         clearInvalidQueue();
         setSyncError("Ada data lama yang sudah dibersihkan — muat ulang halaman sekali saja.");
         return;
@@ -284,7 +291,7 @@ export default function MutabaahPage() {
           </div>
           <h3 className="font-bold text-lg mt-4">Belum ada target hari ini</h3>
           <p className="text-sm text-muted-foreground mt-1 max-w-[36ch] mx-auto leading-6">Mulai dari satu amalan kecil dulu. Nanti bisa ditambah pelan-pelan bersama keluarga.</p>
-          <Button className="mt-5 rounded-full" onClick={() => (window.location.href = "/keluarga")}>
+          <Button className="mt-5 rounded-full" onClick={() => router.push("/keluarga/amalan")}>
             Buat Target Pertama
           </Button>
         </Card>
@@ -414,7 +421,7 @@ export default function MutabaahPage() {
                 {g.items.map((h) => (
                 <HabitCard
                   key={h.id}
-                  habit={{ id: h.id, name: h.name, category: h.category as any, type: h.type, target: h.target_value, unit: h.unit ?? undefined }}
+                  habit={{ id: h.id, name: h.name, category: h.category as HabitCategory, type: h.type, target: h.target_value, unit: h.unit ?? undefined }}
                   entry={entries[h.id]}
                   onToggle={() => handleToggle(h.id)}
                   onUpdateValue={(d) => handleUpdate(h.id, d)}

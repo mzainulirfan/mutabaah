@@ -1,11 +1,13 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Trash2, Loader2, Check, BookOpen, Heart, Target, ChevronLeft, ChevronRight, Pencil, X } from "lucide-react";
 import Link from "next/link";
 import { Sheet } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";
+import type { HabitType } from "@/lib/mock-data";
+import { getErrorMessage } from "@/lib/utils";
 import { clearFamilyCache, getFamilyContext, getSessionUser } from "@/lib/family-context";
 
 type HabitRow = { id: string; name: string; category: string; type: string; target_value: number; unit: string | null; is_active: boolean };
@@ -30,7 +32,7 @@ function habitTargetText(h: { type: string; target_value: number; unit: string |
   return "Hitung jumlah";
 }
 
-const templates: Record<string, { name: string; category: string; type: string; target: number; unit?: string }[]> = {
+const templates: Record<string, { name: string; category: string; type: HabitType; target: number; unit?: string }[]> = {
   Anak: [
     { name: "Shalat Subuh", category: "Ibadah Wajib", type: "BOOLEAN", target: 1 },
     { name: "Shalat Dzuhur", category: "Ibadah Wajib", type: "BOOLEAN", target: 1 },
@@ -68,7 +70,7 @@ export default function AmalanPage() {
   const [familyId, setFamilyId] = useState<string | null>(null);
   const [habits, setHabits] = useState<HabitRow[]>([]);
   const [habitOpen, setHabitOpen] = useState(false);
-  const [newHabit, setNewHabit] = useState({ name: "", category: "Ibadah Wajib", type: "BOOLEAN", target: 1, unit: "" });
+  const [newHabit, setNewHabit] = useState<{ name: string; category: string; type: HabitType; target: number; unit: string }>({ name: "", category: "Ibadah Wajib", type: "BOOLEAN", target: 1, unit: "" });
   const [adding, setAdding] = useState(false);
   const [manageHabit, setManageHabit] = useState<HabitRow | null>(null);
   const [editing, setEditing] = useState(false);
@@ -76,7 +78,7 @@ export default function AmalanPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!supabase) { setLoading(false); return; }
     const user = await getSessionUser(supabase);
     if (!user) { setLoading(false); return; }
@@ -84,11 +86,15 @@ export default function AmalanPage() {
     if (!family) { setLoading(false); return; }
     setFamilyId(family.familyId);
     const { data: habitRows } = await supabase.from("mutabaah_habits").select("id,name,category,type,target_value,unit,is_active").eq("family_id", family.familyId).order("sort_order");
-    setHabits((habitRows ?? []) as any);
+    setHabits((habitRows ?? []) as HabitRow[]);
     setLoading(false);
-  };
+  }, [supabase]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    void (async () => {
+      await load();
+    })();
+  }, [load]);
 
   useEffect(() => {
     if (!msg) return;
@@ -108,7 +114,7 @@ export default function AmalanPage() {
         family_id: familyId,
         name: newHabit.name.trim(),
         category: newHabit.category,
-        type: newHabit.type as any,
+        type: newHabit.type,
         target_value: isTap ? 1 : Number(newHabit.target) || 1,
         unit: isTap ? undefined : newHabit.unit.trim() || selectedType.unitPlaceholder,
       });
@@ -117,7 +123,7 @@ export default function AmalanPage() {
       setHabitOpen(false);
       setMsg(`Amalan "${newHabit.name.trim()}" tersimpan. Silakan isi mulai hari ini.`);
       load();
-    } catch (e: any) { setMsg(e.message); } finally { setAdding(false); }
+    } catch (e: unknown) { setMsg(getErrorMessage(e)); } finally { setAdding(false); }
   };
 
   const handleDeleteHabit = async (id: string, name: string) => {
@@ -129,7 +135,7 @@ export default function AmalanPage() {
       setHabits((prev) => prev.filter((h) => h.id !== id));
       setManageHabit(null);
       setMsg(`"${name}" dihapus.`);
-    } catch (e: any) { setMsg(e.message); }
+    } catch (e: unknown) { setMsg(getErrorMessage(e)); }
   };
 
   const handleToggleActive = async (h: HabitRow) => {
@@ -141,7 +147,7 @@ export default function AmalanPage() {
       setHabits((prev) => prev.map((x) => (x.id === h.id ? next : x)));
       setManageHabit((prev) => (prev?.id === h.id ? next : prev));
       setMsg(next.is_active ? `"${h.name}" ditampilkan lagi di mutabaah harian.` : `"${h.name}" dijeda — tidak muncul di mutabaah harian.`);
-    } catch (e: any) { setMsg(e.message); }
+    } catch (e: unknown) { setMsg(getErrorMessage(e)); }
   };
 
   const openEdit = (h: HabitRow) => {
@@ -154,18 +160,23 @@ export default function AmalanPage() {
     setSavingEdit(true);
     try {
       const { updateHabit } = await import("@/lib/actions/habit");
-      const patch: Record<string, unknown> = { name: editForm.name.trim(), category: editForm.category, is_active: editForm.is_active };
-      if (manageHabit.type !== "BOOLEAN") {
-        patch.target_value = Number(editForm.target) || 1;
-        patch.unit = editForm.unit.trim() || null;
-      }
-      await updateHabit(manageHabit.id, patch as any);
+      const keepTarget = manageHabit.type === "BOOLEAN";
+      const nextTarget = keepTarget ? manageHabit.target_value : Number(editForm.target) || 1;
+      const nextUnit = keepTarget ? manageHabit.unit : editForm.unit.trim() || null;
+      await updateHabit(manageHabit.id, {
+        name: editForm.name.trim(),
+        category: editForm.category,
+        target_value: nextTarget,
+        unit: nextUnit ?? undefined,
+        is_active: editForm.is_active,
+      });
       clearFamilyCache();
-      setHabits((prev) => prev.map((x) => (x.id === manageHabit.id ? { ...x, ...patch, target_value: Number((patch as any).target_value ?? x.target_value), unit: ((patch as any).unit ?? x.unit) as string | null } : x)));
-      setManageHabit((prev) => (prev ? { ...prev, name: editForm.name.trim(), category: editForm.category, target_value: manageHabit.type !== "BOOLEAN" ? Number(editForm.target) || 1 : prev.target_value, unit: manageHabit.type !== "BOOLEAN" ? editForm.unit.trim() || null : prev.unit, is_active: editForm.is_active } : prev));
+      const nextFields = { name: editForm.name.trim(), category: editForm.category, target_value: nextTarget, unit: nextUnit, is_active: editForm.is_active };
+      setHabits((prev) => prev.map((x) => (x.id === manageHabit.id ? { ...x, ...nextFields } : x)));
+      setManageHabit((prev) => (prev ? { ...prev, ...nextFields } : prev));
       setEditing(false);
       setMsg(`Perubahan "${editForm.name.trim()}" tersimpan.`);
-    } catch (e: any) { setMsg(e.message); } finally { setSavingEdit(false); }
+    } catch (e: unknown) { setMsg(getErrorMessage(e)); } finally { setSavingEdit(false); }
   };
 
   const handleApplyTemplate = async (key: string) => {
@@ -176,7 +187,7 @@ export default function AmalanPage() {
     const { createHabit } = await import("@/lib/actions/habit");
     for (const it of items) {
       if (habits.some((h) => h.name === it.name)) continue;
-      await createHabit({ family_id: familyId, name: it.name, category: it.category, type: it.type as any, target_value: it.target, unit: (it as any).unit ?? undefined });
+      await createHabit({ family_id: familyId, name: it.name, category: it.category, type: it.type, target_value: it.target, unit: it.unit });
     }
     clearFamilyCache();
     setMsg(`Contoh "${key}" ditambahkan. Bisa diubah setelahnya.`);
@@ -195,8 +206,8 @@ export default function AmalanPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/keluarga" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground rounded-full px-2 py-1 -ml-2">
-          <ChevronLeft className="h-4 w-4" /> Keluarga
+        <Link href="/profil" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground rounded-full px-2 py-1 -ml-2">
+          <ChevronLeft className="h-4 w-4" /> Profil
         </Link>
         <div className="flex items-center justify-between gap-2 mt-2">
           <h1 className="text-[26px] font-bold tracking-tight leading-tight">Amalan</h1>
@@ -381,7 +392,7 @@ export default function AmalanPage() {
               </div>
               <div>
                 <label htmlFor="amalan-cara" className="text-xs font-medium">Cara mengisinya</label>
-                <select id="amalan-cara" value={newHabit.type} onChange={(e) => setNewHabit({ ...newHabit, type: e.target.value })} className="mt-1.5 w-full rounded-xl border bg-card px-2.5 py-2.5 text-sm">
+                <select id="amalan-cara" value={newHabit.type} onChange={(e) => setNewHabit({ ...newHabit, type: e.target.value as HabitType })} className="mt-1.5 w-full rounded-xl border bg-card px-2.5 py-2.5 text-sm">
                   {typeOptions.map((t) => (
                     <option key={t.value} value={t.value}>{t.label}</option>
                   ))}

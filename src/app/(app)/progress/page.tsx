@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { dailyProgress, isStreakDay, calendarStatus } from "@/lib/progress";
 import { daysAgoLocal, localDateKey } from "@/lib/local-date";
 import { useLocalDayKey } from "@/hooks/use-local-day-key";
+import type { EntryRow } from "@/lib/supabase/types";
 import { getFamilyContext, getSessionUser } from "@/lib/family-context";
 
 type HabitRow = { id: string; name: string; category: string; type: string; target_value: number };
@@ -29,14 +30,26 @@ export default function ProgressPage() {
   const [showAll, setShowAll] = useState(false);
   const [showStreak, setShowStreak] = useState(true);
 
+  // localStorage hanya ada di browser — baca di dalam callback effect agar
+  // prerender server tetap aman dan tidak ada setState sinkron di badan effect.
   useEffect(() => {
-    try {
-      setShowStreak(localStorage.getItem("mutabaah:streak") !== "0");
-    } catch {}
+    const t = setTimeout(() => {
+      try {
+        setShowStreak(localStorage.getItem("mutabaah:streak") !== "0");
+      } catch {}
+    }, 0);
+    return () => clearTimeout(t);
   }, []);
 
+  const [weekLabel] = useState(() => {
+    const end = new Date();
+    const start = new Date(Date.now() - 6 * 86400000);
+    const fmt = (d: Date) => d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+    return `${fmt(start)} — ${fmt(end)}`;
+  });
+
   useEffect(() => {
-    (async () => {
+    void (async () => {
       if (!supabase) {
         const { weeklyData, habits: mockHabits } = await import("@/lib/mock-data");
         setWeekly(weeklyData);
@@ -63,12 +76,13 @@ export default function ProgressPage() {
       const monthStartISO = `${nowForRange.getFullYear()}-${String(nowForRange.getMonth() + 1).padStart(2, "0")}-01`;
       const rangeStart = monthStartISO < thirtyAgo ? monthStartISO : thirtyAgo;
       const { data: entries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,date").eq("family_id", family.familyId).eq("user_id", user.id).gte("date", rangeStart);
+      const entryRows = (entries ?? []) as EntryRow[];
       const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
       const weekVals: { day: string; value: number }[] = [];
       for (let i = 6; i >= 0; i--) {
         const d = daysAgoLocal(i, nowForRange);
         const iso = localDateKey(d);
-        const items = hRows.map((h) => { const e = (entries ?? []).find((x: any) => x.date === iso && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
+        const items = hRows.map((h) => { const e = entryRows.find((x) => x.date === iso && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
         weekVals.push({ day: dayNames[d.getDay()], value: dailyProgress(items) });
       }
       setWeekly(weekVals);
@@ -78,7 +92,7 @@ export default function ProgressPage() {
       const allDays: number[] = [];
       for (let i = 29; i >= 0; i--) {
         const d = localDateKey(daysAgoLocal(i, nowForRange));
-        const items = hRows.map((h) => { const e = (entries ?? []).find((x: any) => x.date === d && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
+        const items = hRows.map((h) => { const e = entryRows.find((x) => x.date === d && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
         allDays.push(dailyProgress(items));
       }
       let curStreak = 0; for (let i = allDays.length - 1; i >= 0; i--) { if (isStreakDay(allDays[i])) curStreak++; else break; }
@@ -90,7 +104,7 @@ export default function ProgressPage() {
       const bd = hRows.map((h) => {
         const vals = allDays.map((_, idx) => {
           const d = localDateKey(daysAgoLocal(29 - idx, nowForRange));
-          const e = (entries ?? []).find((x: any) => x.date === d && x.habit_id === h.id);
+          const e = entryRows.find((x) => x.date === d && x.habit_id === h.id);
           const v = e ? Number(e.value) : 0;
           if (h.type === "BOOLEAN") return v ? 100 : 0;
           return Math.round(Math.min(100, (v / Number(h.target_value)) * 100));
@@ -103,8 +117,8 @@ export default function ProgressPage() {
       const cal: typeof monthDays = [];
       for (let d = 1; d <= daysInMonth; d++) {
         const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-        const items = hRows.map((h) => { const e = (entries ?? []).find((x: any) => x.date === iso && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
-        const hasAny = (entries ?? []).some((x: any) => x.date === iso);
+        const items = hRows.map((h) => { const e = entryRows.find((x) => x.date === iso && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
+        const hasAny = entryRows.some((x) => x.date === iso);
         const p = hasAny ? dailyProgress(items) : null;
         cal.push({ day: d, progress: p, status: calendarStatus(p) });
       }
@@ -153,55 +167,69 @@ export default function ProgressPage() {
       {/* Mingguan — panel hijau tua seperti Beranda */}
       <div className="rounded-[24px] p-6 text-white relative overflow-hidden bg-gradient-to-br from-[#1C5B40] via-[#17452F] to-[#102E21]">
         <div className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/5" aria-hidden="true" />
-        <div className="relative flex flex-col lg:flex-row items-center gap-6">
-          <ProgressRing value={avgWeekly} size={108} stroke={10} track="rgba(255,255,255,0.18)" bar="#E9D9A6" valueClassName="text-white" labelClassName="text-white/60" />
-          <div className="flex-1 text-center lg:text-left min-w-0">
+        <div className="pointer-events-none absolute -left-12 -bottom-14 h-40 w-40 rounded-full bg-white/5" aria-hidden="true" />
+        <div className="relative flex items-center gap-5">
+          <ProgressRing value={avgWeekly} size={96} stroke={9} track="rgba(255,255,255,0.18)" bar="#E9D9A6" valueClassName="text-white" labelClassName="text-white/60" />
+          <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold tracking-widest uppercase text-white/60">Minggu ini</p>
-            <div className="text-[28px] font-bold leading-none mt-1 text-white">
+            <div className="text-[30px] font-bold leading-none mt-1.5 text-white tabular-nums">
               {avgWeekly}% <span className="text-sm font-normal text-white/60">rata-rata</span>
             </div>
-            <p className="text-sm text-white/70 mt-1.5">
-              {new Date(Date.now() - 6 * 86400000).toLocaleDateString("id-ID", { day: "numeric", month: "short" })} — {new Date().toLocaleDateString("id-ID", { day: "numeric", month: "short" })} · {activeDays}/7 hari terisi
+            <p className="text-xs text-white/70 mt-1.5 tabular-nums">
+              {weekLabel} · {activeDays}/7 hari terisi
             </p>
-            <div className="mt-4 flex items-end gap-2 justify-center lg:justify-start" role="img" aria-label={`Grafik mingguan, rata-rata ${avgWeekly} persen`}>
-              {weekly.map((d, i) => {
-                const isBest = d.value === bestDay.value && d.value > 0;
-                return (
-                  <div key={d.day + i} className="flex flex-col items-center gap-1.5">
-                    <div className="w-7 rounded-full bg-white/15 overflow-hidden flex items-end" style={{ height: "36px" }}>
-                      <div className={`w-full rounded-full transition-all ${isBest ? "bg-[#E9D9A6]" : "bg-white/50"}`} style={{ height: `${d.value}%` }} />
-                    </div>
-                    <span className={`text-[10px] font-medium ${isBest ? "text-[#E9D9A6]" : "text-white/60"}`}>{d.day}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-3 w-full lg:w-[340px]">
-            <div className="rounded-2xl bg-white/10 p-4 text-center">
-              <div className="text-xs text-white/60">Hari terbaik</div>
-              <div className="font-bold text-white">{bestDay.day}</div>
-              <div className="text-xs text-white/60">{bestDay.value}%</div>
-            </div>
-            <div className="rounded-2xl bg-white/10 p-4 text-center">
-              <div className="text-xs text-white/60">Hari terisi</div>
-              <div className="font-bold text-white">{activeDays}/7</div>
-            </div>
-            {showStreak ? (
-              <div className="rounded-2xl bg-white/10 p-4 text-center">
-                <div className="text-xs text-white/80 flex items-center justify-center gap-1">
-                  <Flame className="h-3 w-3" /> Rangkaian
-                </div>
-                <div className="font-bold text-white">{streak} hari</div>
-              </div>
-            ) : (
-              <div className="rounded-2xl bg-white/10 p-4 text-center">
-                <div className="text-xs text-white/60">Hari penuh</div>
-                <div className="font-bold text-white">{monthStats.perfect}</div>
-              </div>
-            )}
           </div>
         </div>
+        <p className="relative text-sm text-white/85 leading-6 mt-4">
+          {avgWeekly >= 85
+            ? "MasyaAllah, pekan yang terjaga. Pertahankan ritmemu."
+            : avgWeekly >= 70
+              ? "Alhamdulillah, ritmemu stabil minggu ini."
+              : avgWeekly >= 40
+                ? "Pelan-pelan — setiap isian hari ini berarti."
+                : "Belum banyak terisi pekan ini, tidak apa-apa. Mulai dari satu ketukan hari ini."}
+        </p>
+        <div className="relative mt-5 flex items-end justify-between gap-1.5" role="img" aria-label={`Grafik mingguan, rata-rata ${avgWeekly} persen`}>
+          {weekly.map((d, i) => {
+            const isBest = d.value === bestDay.value && d.value > 0;
+            return (
+              <div key={d.day + i} className="flex flex-1 flex-col items-center gap-1.5 min-w-0">
+                <span className={`text-[10px] font-semibold tabular-nums ${isBest ? "text-[#E9D9A6]" : "text-transparent"}`} aria-hidden={!isBest}>
+                  {d.value}
+                </span>
+                <div className="w-full max-w-9 rounded-full bg-white/15 overflow-hidden flex items-end" style={{ height: "52px" }}>
+                  <div className={`w-full rounded-full transition-all ${isBest ? "bg-[#E9D9A6]" : "bg-white/50"}`} style={{ height: `${Math.max(d.value, 4)}%` }} />
+                </div>
+                <span className={`text-[10px] font-medium ${isBest ? "text-[#E9D9A6]" : "text-white/60"}`}>{d.day}</span>
+              </div>
+            );
+          })}
+        </div>
+        <dl className="relative mt-5 pt-4 border-t border-white/10 grid grid-cols-3 gap-2 text-center">
+          <div>
+            <dt className="text-[11px] text-white/60">Hari terbaik</dt>
+            <dd className="font-bold text-white mt-0.5 tabular-nums">{bestDay.day} · {bestDay.value}%</dd>
+          </div>
+          <div className="border-x border-white/10">
+            <dt className="text-[11px] text-white/60">Hari terisi</dt>
+            <dd className="font-bold text-white mt-0.5 tabular-nums">{activeDays}/7</dd>
+          </div>
+          <div>
+            {showStreak ? (
+              <>
+                <dt className="text-[11px] text-white/60 flex items-center justify-center gap-1">
+                  <Flame className="h-3 w-3" aria-hidden="true" /> Rangkaian
+                </dt>
+                <dd className="font-bold text-white mt-0.5 tabular-nums">{streak} hari</dd>
+              </>
+            ) : (
+              <>
+                <dt className="text-[11px] text-white/60">Hari penuh</dt>
+                <dd className="font-bold text-white mt-0.5 tabular-nums">{monthStats.perfect}</dd>
+              </>
+            )}
+          </div>
+        </dl>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">

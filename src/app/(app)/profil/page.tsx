@@ -2,144 +2,266 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Bell, User, Mail, Check, Crown, Sun, Moon, ChevronRight } from "lucide-react";
+import { Bell, User, Mail, Check, AlertCircle, Users, Sun, Moon, ChevronRight, Target, Settings2, LogOut } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { logout } from "@/lib/actions/auth";
 import { getFamilyContext, getSessionUser } from "@/lib/family-context";
+import { getErrorMessage } from "@/lib/utils";
+
+type FamilyMenuItem = {
+  href: string;
+  title: string;
+  desc: string;
+  icon: typeof Users;
+  badge?: string;
+};
+
+const roleLabel: Record<string, string> = { OWNER: "Pemilik", PARENT: "Orang tua", MEMBER: "Anggota" };
 
 export default function ProfilPage() {
   const supabase = useMemo(() => createClient(), []);
+  const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<{ id: string; email: string; name: string } | null>(null);
   const [family, setFamily] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
+  const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
+  const [activeHabits, setActiveHabits] = useState(0);
   const [notif, setNotif] = useState({ enabled: true, morning: "07:00", evening: "20:30" });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    (async () => {
-      if (!supabase) return;
-      const user = await getSessionUser(supabase);
-      if (!user) return;
-      setUser({ id: user.id, email: user.email ?? "", name: (user.user_metadata?.name as string) ?? user.email?.split("@")[0] ?? "User" });
-      const [familyContext, { data: pref }] = await Promise.all([
-        getFamilyContext(supabase, user.id),
-        supabase.from("mutabaah_notification_preferences").select("*").eq("user_id", user.id).maybeSingle(),
+    void (async () => {
+      if (!supabase) { setLoading(false); return; }
+      const sessionUser = await getSessionUser(supabase);
+      if (!sessionUser) { setLoading(false); return; }
+      setUser({
+        id: sessionUser.id,
+        email: sessionUser.email ?? "",
+        name: (sessionUser.user_metadata?.name as string | undefined) ?? sessionUser.email?.split("@")[0] ?? "User",
+      });
+      const [familyContext, { data: prefData }] = await Promise.all([
+        getFamilyContext(supabase, sessionUser.id),
+        supabase.from("mutabaah_notification_preferences").select("enabled,morning_time,evening_time").eq("user_id", sessionUser.id).maybeSingle(),
       ]);
       if (familyContext) {
         setRole(familyContext.role);
         setFamily(familyContext.familyName);
+        setMembers(familyContext.members.map((m) => ({ id: m.user_id, name: m.name })));
+        setActiveHabits(familyContext.habits.length);
       }
+      const pref = prefData as { enabled: boolean; morning_time: string | null; evening_time: string | null } | null;
       if (pref) setNotif({ enabled: pref.enabled, morning: pref.morning_time?.slice(0, 5) ?? "07:00", evening: pref.evening_time?.slice(0, 5) ?? "20:30" });
+      setLoading(false);
     })();
   }, [supabase]);
 
+  useEffect(() => {
+    if (!msg) return;
+    const t = setTimeout(() => setMsg(null), 2500);
+    return () => clearTimeout(t);
+  }, [msg]);
+
   const saveNotif = async () => {
-    if (!user) return;
+    if (!user || !supabase) return;
     setSaving(true);
+    setErr(null);
     try {
-      const supa = createClient();
-      if (!supa) return;
-      await supa.from("mutabaah_notification_preferences").upsert({ user_id: user.id, enabled: notif.enabled, morning_time: notif.morning, evening_time: notif.evening });
+      await supabase.from("mutabaah_notification_preferences").upsert({ user_id: user.id, enabled: notif.enabled, morning_time: notif.morning, evening_time: notif.evening });
       setMsg("Pengingat disimpan.");
-      setTimeout(() => setMsg(null), 2500);
-    } finally { setSaving(false); }
+    } catch (e: unknown) {
+      setErr(getErrorMessage(e, "Pengingat belum tersimpan — coba lagi."));
+    } finally {
+      setSaving(false);
+    }
   };
 
+  const familyMenu: FamilyMenuItem[] = [
+    { href: "/keluarga/anggota", title: "Anggota", desc: "Siapa saja di keluarga ini, undang yang belum bergabung", icon: Users, badge: `${members.length} orang` },
+    { href: "/keluarga/amalan", title: "Amalan", desc: "Daftar target harian yang diisi bersama", icon: Target, badge: `${activeHabits} aktif` },
+    { href: "/keluarga/lainnya", title: "Lainnya", desc: "Nama keluarga dan tampilan rangkaian", icon: Settings2 },
+  ];
+
+  if (loading) {
+    return (
+      <div className="space-y-6 max-w-[640px] mx-auto animate-pulse" aria-busy="true" aria-label="Memuat profil">
+        <div className="h-44 rounded-[24px] bg-muted" />
+        <div className="h-56 rounded-[20px] bg-muted" />
+        <div className="h-40 rounded-[20px] bg-muted" />
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6 max-w-[640px] mx-auto">
+    <div className="space-y-8 max-w-[640px] mx-auto">
       <div>
         <h1 className="text-[26px] font-bold tracking-tight leading-none">Profil</h1>
         <p className="text-sm text-muted-foreground mt-1.5">Akun, keluarga, dan pengingat.</p>
       </div>
 
-      {/* Hero — panel hijau tua seperti halaman lain */}
+      {/* Identitas — panel hijau tua seperti halaman lain */}
       <div className="rounded-[24px] p-6 text-white relative overflow-hidden bg-gradient-to-br from-[#1C5B40] via-[#17452F] to-[#102E21]">
         <div className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/5" aria-hidden="true" />
-        <div className="relative flex items-start gap-4">
-          <div className="h-16 w-16 rounded-2xl bg-white/15 flex items-center justify-center text-white font-bold text-lg shrink-0">
+        <div className="relative flex items-center gap-4">
+          <div className="h-16 w-16 rounded-2xl bg-white/15 flex items-center justify-center text-white font-bold text-lg shrink-0" aria-hidden="true">
             {user ? user.name.slice(0, 2).toUpperCase() : <User className="h-6 w-6" />}
           </div>
-          <div className="flex-1 min-w-0 pt-0.5">
-            <div className="font-bold text-lg leading-tight truncate text-white">{user ? user.name : "Belum login"}</div>
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-lg leading-tight truncate text-white">{user ? user.name : "Belum masuk"}</div>
             <div className="text-sm text-white/70 flex items-center gap-1.5 truncate mt-1">
-              <Mail className="h-3.5 w-3.5 shrink-0" /> {user?.email ?? "—"}
+              <Mail className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {user?.email ?? "Masuk untuk menyimpan progresmu"}
             </div>
             <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
               {role && (
                 <span className="text-[11px] bg-white/15 px-2 py-0.5 rounded-full font-medium text-white">
-                  {role === "OWNER" ? "Pemilik" : role === "PARENT" ? "Orang tua" : "Anggota"}
+                  {roleLabel[role] ?? "Anggota"}
                 </span>
               )}
               {family && (
                 <span className="text-[11px] bg-white/15 px-2 py-0.5 rounded-full flex items-center gap-1 text-white">
-                  <Crown className="h-3 w-3" /> {family}
+                  <Users className="h-3 w-3" aria-hidden="true" /> {family}
                 </span>
               )}
             </div>
           </div>
-          {user ? (
-            <form action={logout} className="shrink-0">
-              <Button variant="secondary" size="sm" className="rounded-full" type="submit">
-                Keluar
-              </Button>
-            </form>
-          ) : (
-            <Link href="/login" className="shrink-0">
-              <Button variant="secondary" size="sm" className="rounded-full">
-                Masuk
-              </Button>
-            </Link>
-          )}
         </div>
-        {user && (
-          <p className="relative text-xs text-white/60 mt-5 leading-5">
-            Catatan dan progresmu hanya terlihat oleh keluargamu sendiri.
-          </p>
-        )}
+        <p className="relative text-xs text-white/60 mt-5 leading-5">
+          {user
+            ? "Catatan dan progresmu hanya terlihat oleh keluargamu sendiri."
+            : "Progresmu saat ini hanya tersimpan di perangkat ini. Masuk agar tersimpan aman."}
+        </p>
       </div>
 
-      {msg && <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-2.5 text-sm text-emerald-800 flex items-center gap-2"><Check className="h-4 w-4" /> {msg}</div>}
+      {msg && <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-2.5 text-sm text-emerald-800 flex items-center gap-2" role="status"><Check className="h-4 w-4 shrink-0" /> {msg}</div>}
+      {err && <div className="rounded-2xl bg-[var(--destructive-soft)] border border-red-200 px-4 py-2.5 text-sm text-red-700 flex items-center gap-2" role="alert"><AlertCircle className="h-4 w-4 shrink-0" /> {err}</div>}
 
-      <Card className="rounded-[20px] p-5">
-        <h3 className="font-semibold flex items-center gap-2">
-          <Bell className="h-4 w-4 text-primary" /> Pengingat harian
-        </h3>
-        <p className="text-xs text-muted-foreground mt-1">Disapa lembut hanya bila belum mengisi.</p>
-        <div className="mt-5 space-y-4">
-          <label className="flex items-center justify-between rounded-2xl border p-3.5 cursor-pointer hover:border-primary/15 transition-colors">
-            <span className="text-sm font-medium">Aktifkan pengingat</span>
-            <input type="checkbox" checked={notif.enabled} onChange={(e) => setNotif({ ...notif, enabled: e.target.checked })} className="h-5 w-5 accent-[var(--primary)]" />
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="rounded-2xl border p-3.5 hover:border-primary/15 transition-colors">
-              <div className="text-xs font-semibold flex items-center gap-1.5"><Sun className="h-3.5 w-3.5 text-amber-500" /> Pagi</div>
-              <input type="time" value={notif.morning} onChange={(e) => setNotif({ ...notif, morning: e.target.value })} className="mt-2 w-full rounded-xl border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-              <div className="text-[11px] text-muted-foreground mt-1.5">Jangan lupa mutabaah pagi</div>
-            </label>
-            <label className="rounded-2xl border p-3.5 hover:border-primary/15 transition-colors">
-              <div className="text-xs font-semibold flex items-center gap-1.5"><Moon className="h-3.5 w-3.5 text-indigo-500" /> Malam</div>
-              <input type="time" value={notif.evening} onChange={(e) => setNotif({ ...notif, evening: e.target.value })} className="mt-2 w-full rounded-xl border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-              <div className="text-[11px] text-muted-foreground mt-1.5">Sudah mengisi hari ini?</div>
-            </label>
-          </div>
-          <Button onClick={saveNotif} disabled={saving || !user} className="rounded-full w-full">
-            {saving ? "Menyimpan…" : "Simpan pengingat"}
-          </Button>
-        </div>
-      </Card>
+      {/* Keluarga — ringkasan + jalan ke anggota, amalan, dan pengaturan */}
+      <section aria-label="Keluarga">
+        <h2 className="font-semibold flex items-center gap-2 text-sm mb-3">
+          <Users className="h-4 w-4 text-primary" aria-hidden="true" /> Keluarga
+        </h2>
+        {!family ? (
+          <Card className="p-8 text-center rounded-[24px] border-dashed">
+            <div className="h-14 w-14 rounded-2xl bg-[var(--primary-soft)] flex items-center justify-center mx-auto">
+              <Users className="h-6 w-6 text-primary" aria-hidden="true" />
+            </div>
+            <h3 className="font-bold text-lg mt-4">Belum ada keluarga</h3>
+            <p className="text-sm text-muted-foreground mt-1 max-w-[32ch] mx-auto">Buat keluarga untuk mengatur amalan dan mengundang anggota.</p>
+            <Link href="/onboarding" className="inline-flex items-center justify-center mt-5 rounded-full bg-primary text-primary-foreground text-sm font-medium px-5 py-2.5 min-h-[44px] hover:bg-[#134d39] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              Buat Keluarga
+            </Link>
+          </Card>
+        ) : (
+          <Card className="rounded-[20px] p-5">
+            <div className="flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold truncate">{family}</div>
+                <div className="text-xs text-muted-foreground mt-1 tabular-nums">
+                  {members.length} anggota · {activeHabits} amalan aktif
+                </div>
+              </div>
+              <div className="flex -space-x-2 shrink-0" aria-hidden="true">
+                {members.slice(0, 5).map((m) => (
+                  <div key={m.id} className="h-8 w-8 rounded-full bg-[var(--primary-soft)] border-2 border-white flex items-center justify-center text-[11px] font-semibold text-primary">
+                    {m.name.slice(0, 2).toUpperCase()}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <ul className="mt-4 divide-y divide-border/60 border-t border-border/60">
+              {familyMenu.map((m) => (
+                <li key={m.href}>
+                  <Link
+                    href={m.href}
+                    className="flex items-center gap-3 py-3.5 rounded-2xl hover:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <span className="h-10 w-10 rounded-xl bg-[var(--primary-soft)] flex items-center justify-center text-primary shrink-0">
+                      <m.icon className="h-5 w-5" aria-hidden="true" />
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block font-medium text-sm leading-none">{m.title}</span>
+                      <span className="block text-xs text-muted-foreground mt-1.5 truncate">{m.desc}</span>
+                    </span>
+                    {m.badge ? (
+                      <span className="text-xs bg-muted px-2.5 py-1 rounded-full font-medium shrink-0 tabular-nums">{m.badge}</span>
+                    ) : null}
+                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+        <p className="text-center text-xs text-muted-foreground leading-5 mt-3">
+          Perubahan di keluarga langsung berlaku untuk semua anggota,<br />jadi ubahlah dengan tenang dan secukupnya.
+        </p>
+      </section>
 
-      <Card className="rounded-[20px] p-2">
-        <Link href="/keluarga" className="flex items-center gap-3 p-3.5 rounded-2xl hover:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <div className="h-10 w-10 rounded-xl bg-[var(--primary-soft)] flex items-center justify-center text-primary shrink-0"><Crown className="h-5 w-5" /></div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold leading-none">Keluargaku</div>
-            <div className="text-xs text-muted-foreground mt-1.5 truncate">{family ?? "Lihat anggota dan amalan"}</div>
+      {/* Pengingat */}
+      <section aria-label="Pengingat harian">
+        <h2 className="font-semibold flex items-center gap-2 text-sm mb-3">
+          <Bell className="h-4 w-4 text-primary" aria-hidden="true" /> Pengingat harian
+        </h2>
+        <Card className="rounded-[20px] p-5">
+          <p className="text-xs text-muted-foreground leading-5">Disapa lembut hanya bila belum mengisi.</p>
+          <div className="mt-4 space-y-4">
+            <label className="flex items-center justify-between gap-3 rounded-2xl border p-3.5 cursor-pointer hover:border-primary/15 transition-colors min-h-[44px]">
+              <span className="text-sm font-medium">Aktifkan pengingat</span>
+              <input type="checkbox" checked={notif.enabled} onChange={(e) => setNotif({ ...notif, enabled: e.target.checked })} className="h-5 w-5 shrink-0 accent-[var(--primary)]" />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="rounded-2xl border p-3.5 hover:border-primary/15 transition-colors">
+                <span className="text-xs font-semibold flex items-center gap-1.5"><Sun className="h-3.5 w-3.5 text-amber-500" aria-hidden="true" /> Pagi</span>
+                <input type="time" value={notif.morning} onChange={(e) => setNotif({ ...notif, morning: e.target.value })} aria-label="Jam pengingat pagi" className="mt-2 w-full rounded-xl border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+                <span className="block text-[11px] text-muted-foreground mt-1.5">Jangan lupa mutabaah pagi</span>
+              </label>
+              <label className="rounded-2xl border p-3.5 hover:border-primary/15 transition-colors">
+                <span className="text-xs font-semibold flex items-center gap-1.5"><Moon className="h-3.5 w-3.5 text-indigo-500" aria-hidden="true" /> Malam</span>
+                <input type="time" value={notif.evening} onChange={(e) => setNotif({ ...notif, evening: e.target.value })} aria-label="Jam pengingat malam" className="mt-2 w-full rounded-xl border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+                <span className="block text-[11px] text-muted-foreground mt-1.5">Sudah mengisi hari ini?</span>
+              </label>
+            </div>
+            <Button onClick={saveNotif} disabled={saving || !user} className="rounded-full w-full min-h-[44px]">
+              {saving ? "Menyimpan…" : "Simpan pengingat"}
+            </Button>
+            {!user && <p className="text-xs text-muted-foreground text-center">Masuk dulu untuk menyimpan pengingat.</p>}
           </div>
-          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-        </Link>
-      </Card>
+        </Card>
+      </section>
+
+      {/* Akun */}
+      <section aria-label="Akun">
+        <h2 className="font-semibold flex items-center gap-2 text-sm mb-3">
+          <User className="h-4 w-4 text-primary" aria-hidden="true" /> Akun
+        </h2>
+        <Card className="rounded-[20px] p-5">
+          {user ? (
+            <div className="flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{user.email}</div>
+                <div className="text-xs text-muted-foreground mt-1">Keluar akan mengakhiri sesi di perangkat ini.</div>
+              </div>
+              <form action={logout} className="shrink-0">
+                <Button variant="outline" size="md" className="rounded-full text-red-700 border-red-200 hover:bg-red-50" type="submit">
+                  <LogOut className="h-4 w-4 mr-1.5" aria-hidden="true" /> Keluar
+                </Button>
+              </form>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium">Belum masuk</div>
+                <div className="text-xs text-muted-foreground mt-1">Masuk untuk menyimpan progres antar perangkat.</div>
+              </div>
+              <Link href="/login" className="inline-flex items-center justify-center shrink-0 h-10 px-5 text-[14px] rounded-full font-medium bg-primary text-primary-foreground hover:bg-[#134d39] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Masuk
+              </Link>
+            </div>
+          )}
+        </Card>
+      </section>
     </div>
   );
 }

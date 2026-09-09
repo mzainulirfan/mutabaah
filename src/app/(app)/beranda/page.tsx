@@ -9,10 +9,11 @@ import { createClient } from "@/lib/supabase/client";
 import { HabitCard } from "@/components/app/habit-card";
 import { Sheet } from "@/components/ui/sheet";
 import { dailyProgress, isStreakDay } from "@/lib/progress";
-import type { Entry } from "@/lib/mock-data";
+import type { Entry, HabitCategory } from "@/lib/mock-data";
 import { enqueue } from "@/lib/offline-queue";
 import { daysAgoLocal, localDateKey } from "@/lib/local-date";
 import { useLocalDayKey } from "@/hooks/use-local-day-key";
+import type { EntryRow } from "@/lib/supabase/types";
 import { getFamilyContext, getSessionUser } from "@/lib/family-context";
 
 const PRAYER_ORDER = ["subuh", "dzuhur", "ashar", "maghrib", "isya"];
@@ -26,7 +27,6 @@ export default function BerandaPage() {
   const supabase = useMemo(() => createClient(), []);
   const dayKey = useLocalDayKey();
   const [loading, setLoading] = useState(true);
-  const [familyName, setFamilyName] = useState("Keluarga");
   const [role, setRole] = useState<string>("OWNER");
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState("Ayah");
@@ -35,28 +35,37 @@ export default function BerandaPage() {
   const [delta, setDelta] = useState<number | null>(null);
   const [weekly, setWeekly] = useState<{ day: string; value: number }[]>([]);
   const [recent, setRecent] = useState<{ name: string; act: string; time: string; type: "completed" | "pending" }[]>([]);
-  const [todayLabel, setTodayLabel] = useState("");
-  const [greeting, setGreeting] = useState("Selamat pagi");
+  const [todayLabel] = useState(() =>
+    new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+  );
+  const [greeting] = useState(() => {
+    const h = new Date().getHours();
+    if (h < 11) return "Selamat pagi";
+    if (h < 15) return "Selamat siang";
+    if (h < 18) return "Selamat sore";
+    return "Selamat malam";
+  });
   const [showStreak, setShowStreak] = useState(true);
   const [myHabits, setMyHabits] = useState<{ id: string; name: string; category: string; type: "BOOLEAN" | "QUANTITY" | "COUNTER" | "DURATION"; target_value: number; unit: string | null; sort_order: number }[]>([]);
   const [myEntries, setMyEntries] = useState<Record<string, Entry>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
   const [quickError, setQuickError] = useState<string | null>(null);
 
+  // localStorage hanya ada di browser — baca di dalam callback effect agar
+  // prerender server tetap aman dan tidak ada setState sinkron di badan effect.
   useEffect(() => {
-    const h = new Date().getHours();
-    if (h < 11) setGreeting("Selamat pagi");
-    else if (h < 15) setGreeting("Selamat siang");
-    else if (h < 18) setGreeting("Selamat sore");
-    else setGreeting("Selamat malam");
-    setTodayLabel(new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" }));
-    try {
-      setShowStreak(localStorage.getItem("mutabaah:streak") !== "0");
-    } catch {}
+    const t = setTimeout(() => {
+      try {
+        setShowStreak(localStorage.getItem("mutabaah:streak") !== "0");
+      } catch {}
+    }, 0);
+    return () => clearTimeout(t);
   }, []);
 
   useEffect(() => {
-    (async () => {
+    // setState hanya di dalam kelanjutan async (pola fetch-on-mount yang diizinkan),
+    // bukan sinkron di badan effect.
+    void (async () => {
       if (!supabase) {
         const { members: mockMembers, weeklyData, habits: mockHabits, initialEntries } = await import("@/lib/mock-data");
         setMembers(mockMembers.map((m) => ({ id: m.id, name: m.name, progress: m.progress, streak: m.streak, role: m.id === "m1" ? "OWNER" : "MEMBER" })));
@@ -70,7 +79,6 @@ export default function BerandaPage() {
           { name: "Aisyah", act: "Dzikir pagi selesai, alhamdulillah", time: "06:10", type: "completed" },
           { name: "Yusuf", act: "Mutabaah hari ini menunggu diisi", time: "—", type: "pending" },
         ]);
-        setFamilyName("Keluarga Ahmad");
         setRole("OWNER");
         setUserId("m1");
         setUserName("Ayah");
@@ -88,7 +96,6 @@ export default function BerandaPage() {
       const ctx = await getFamilyContext(supabase, user.id);
       if (!ctx) { setLoading(false); return; }
       setRole(ctx.role);
-      setFamilyName(ctx.familyName);
       setMyHabits(ctx.habits);
       const familyMembers = ctx.members.map((m) => ({ user_id: m.user_id, role: m.role }));
       const userIds = ctx.members.map((m) => m.user_id);
@@ -102,24 +109,24 @@ export default function BerandaPage() {
       ]);
       const profileMap = new Map(ctx.members.map((m) => [m.user_id, m.name] as const));
       const myMap: Record<string, Entry> = {};
-      (todayEntries ?? []).forEach((e: any) => {
+      ((todayEntries ?? []) as EntryRow[]).forEach((e) => {
         if (e.user_id !== user.id) return;
         myMap[e.habit_id] = { habitId: e.habit_id, value: Number(e.value), status: e.status, context: e.context ?? null };
       });
       setMyEntries(myMap);
-      const todayMap = new Map((todayEntries ?? []).map((e: any) => [`${e.user_id}:${e.habit_id}`, e]));
-      const yMap = new Map((yesterdayEntries ?? []).map((e: any) => [`${e.user_id}:${e.habit_id}`, e]));
-      const last30Map = new Map((last30 ?? []).map((e: any) => [`${e.user_id}|${e.date}|${e.habit_id}`, e]));
+      const todayMap = new Map(((todayEntries ?? []) as EntryRow[]).map((e) => [`${e.user_id}:${e.habit_id}`, e]));
+      const yMap = new Map(((yesterdayEntries ?? []) as EntryRow[]).map((e) => [`${e.user_id}:${e.habit_id}`, e]));
+      const last30Map = new Map(((last30 ?? []) as EntryRow[]).map((e) => [`${e.user_id}|${e.date}|${e.habit_id}`, e]));
       const memberStats: typeof members = [];
       let familySum = 0; let familySumYesterday = 0;
       for (const m of familyMembers ?? []) {
-        const name = (profileMap.get(m.user_id) as string) ?? m.user_id.slice(0, 6);
-        const items = (habits ?? []).map((h: any) => {
-          const e: any = todayMap.get(`${m.user_id}:${h.id}`);
+        const name = profileMap.get(m.user_id) ?? m.user_id.slice(0, 6);
+        const items = (habits ?? []).map((h) => {
+          const e = todayMap.get(`${m.user_id}:${h.id}`);
           return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 };
         });
-        const itemsY = (habits ?? []).map((h: any) => {
-          const e: any = yMap.get(`${m.user_id}:${h.id}`);
+        const itemsY = (habits ?? []).map((h) => {
+          const e = yMap.get(`${m.user_id}:${h.id}`);
           return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 };
         });
         const prog = dailyProgress(items);
@@ -127,7 +134,7 @@ export default function BerandaPage() {
         familySum += prog; familySumYesterday += progY;
         const days: string[] = []; for (let i = 29; i >= 0; i--) days.push(localDateKey(daysAgoLocal(i, now)));
         const dailyVals = days.map((d) => {
-          const itemsD = (habits ?? []).map((h: any) => { const e: any = last30Map.get(`${m.user_id}|${d}|${h.id}`); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
+          const itemsD = (habits ?? []).map((h) => { const e = last30Map.get(`${m.user_id}|${d}|${h.id}`); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
           return dailyProgress(itemsD);
         });
         let streak = 0; for (let i = dailyVals.length - 1; i >= 0; i--) { if (isStreakDay(dailyVals[i])) streak++; else break; }
@@ -145,15 +152,15 @@ export default function BerandaPage() {
         const iso = localDateKey(d);
         const perMember = memberStats.map((_, idx) => {
           const uid = userIds[idx];
-          const itemsD = (habits ?? []).map((h: any) => { const e: any = last30Map.get(`${uid}|${iso}|${h.id}`); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
+          const itemsD = (habits ?? []).map((h) => { const e = last30Map.get(`${uid}|${iso}|${h.id}`); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
           return dailyProgress(itemsD);
         });
         weekDays.push({ day: dayNames[d.getDay()], value: perMember.length ? Math.round(perMember.reduce((a, b) => a + b, 0) / perMember.length) : 0 });
       }
       setWeekly(weekDays);
       const habitNameMap = new Map(habits.map((habit) => [habit.id, habit.name] as const));
-      const recentList = (recentEntries ?? []).map((r: any) => {
-        const name = (profileMap.get(r.user_id) as string) ?? "Anggota keluarga";
+      const recentList = ((recentEntries ?? []) as EntryRow[]).map((r) => {
+        const name = profileMap.get(r.user_id) ?? "Anggota keluarga";
         const habitName = habitNameMap.get(r.habit_id) ?? "Mutabaah";
         const time = r.completed_at ? new Date(r.completed_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "";
         if (r.status === "COMPLETED") return { name, act: r.context === "BERJAMAAH" ? `${habitName} — berjamaah di masjid, alhamdulillah` : `${habitName} selesai, alhamdulillah`, time, type: "completed" as const };
@@ -299,7 +306,7 @@ export default function BerandaPage() {
   }
 
   return (
-    <div className="space-y-6 pb-20 lg:pb-0 overflow-x-clip">
+    <div className="space-y-6 pb-6 lg:pb-0 overflow-x-clip">
       {/* Sapaan — minimal */}
       <section aria-label="Sapaan">
         <p className="text-xs text-muted-foreground">{todayLabel}</p>
@@ -317,80 +324,75 @@ export default function BerandaPage() {
         </p>
       </section>
 
-      {/* Perjalanan hari ini — panel hijau tua, tidak lagi dominan putih */}
+      {/* Perjalanan hari ini — panel hijau tua, selaras dengan Progress */}
       <div className="rounded-[24px] p-6 text-white relative overflow-hidden bg-gradient-to-br from-[#1C5B40] via-[#17452F] to-[#102E21]">
         <div className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/5" aria-hidden="true" />
-        <div className="pointer-events-none absolute -left-12 -bottom-14 h-52 w-52 rounded-full bg-black/10" aria-hidden="true" />
-        <div className="relative flex flex-col lg:flex-row items-center gap-6">
+        <div className="pointer-events-none absolute -left-12 -bottom-14 h-40 w-40 rounded-full bg-white/5" aria-hidden="true" />
+        <div className="relative flex items-center gap-5">
           <ProgressRing
             value={heroValue}
-            size={112}
-            stroke={10}
+            size={96}
+            stroke={9}
             track="rgba(255,255,255,0.18)"
             bar="#E9D9A6"
             valueClassName="text-white"
             labelClassName="text-white/60"
           />
-          <div className="flex-1 text-center lg:text-left min-w-0">
+          <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold tracking-widest uppercase text-white/60">{isMemberOnly ? "Perjalananmu hari ini" : "Perjalanan keluarga hari ini"}</p>
-            <div className="flex items-center gap-2 justify-center lg:justify-start mt-1">
-              <span className="text-[28px] font-bold leading-none text-white">{heroValue}%</span>
+            <div className="flex items-center gap-2 mt-1.5">
+              <span className="text-[30px] font-bold leading-none text-white tabular-nums">{heroValue}%</span>
               {delta !== null && delta !== 0 && (
                 <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${delta > 0 ? "bg-white/15 text-white" : "bg-black/20 text-white/70"}`}>
-                  {delta > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />} {delta > 0 ? "+" : ""}{delta}% dari kemarin
+                  {delta > 0 ? <TrendingUp className="h-3 w-3" aria-hidden="true" /> : <TrendingDown className="h-3 w-3" aria-hidden="true" />} {delta > 0 ? "+" : ""}{delta}%
                 </span>
               )}
-              {delta === 0 && <span className="text-xs text-white/60">sama seperti kemarin</span>}
             </div>
-            <p className="text-sm text-white/70 mt-2 leading-6">
+            <p className="text-xs text-white/70 mt-1.5 leading-5">
               {delta !== null && delta > 0
-                ? "Alhamdulillah, ada kemajuan kecil dari kemarin."
+                ? "Naik dari kemarin, alhamdulillah."
                 : delta !== null && delta < 0
-                  ? "Sedikit lebih rendah dari kemarin — tidak apa-apa, hari ini kesempatan baru."
+                  ? "Sedikit di bawah kemarin — hari ini kesempatan baru."
                   : isMemberOnly
-                    ? `${self.streak > 0 ? `${self.streak} hari berturut-turut terisi. ` : ""}Dibandingkan dengan dirimu kemarin, bukan dengan orang lain.`
-                    : `${filledCount} dari ${members.length} anggota sudah mengisi hari ini.`}
+                    ? "Dibandingkan dengan dirimu kemarin."
+                    : `${filledCount} dari ${members.length} anggota sudah mengisi.`}
             </p>
-            <div className="mt-4 h-2 rounded-full bg-white/15 overflow-hidden" role="progressbar" aria-valuenow={heroValue} aria-valuemin={0} aria-valuemax={100} aria-label="Kemajuan hari ini">
-              <div className="h-full bg-[#E9D9A6] transition-all duration-700" style={{ width: `${heroValue}%` }} />
-            </div>
-            {!isMemberOnly && (
-              <div className="mt-4 flex items-center gap-2 justify-center lg:justify-start">
-                <div className="flex -space-x-2" aria-hidden="true">
-                  {members.slice(0, 4).map((m) => (
-                    <div key={m.id} className="h-8 w-8 rounded-full bg-white/15 border-2 border-[#17452F] flex items-center justify-center text-xs font-semibold text-white">
-                      {m.name.slice(0, 2).toUpperCase()}
-                    </div>
-                  ))}
-                  {members.length > 4 && <div className="h-8 w-8 rounded-full bg-black/25 border-2 border-[#17452F] flex items-center justify-center text-xs font-medium text-white">+{members.length - 4}</div>}
-                </div>
-                <span className="text-xs text-white/60">{familyName} · melangkah bersama, bukan berlomba</span>
-              </div>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-3 w-full lg:w-[280px]">
-            <div className="rounded-2xl bg-white/10 p-4 text-center">
-              <div className="text-xs text-white/60">Hari terisi</div>
-              <div className="font-bold text-lg text-white">{activeDays}/7</div>
-              <div className="text-[11px] text-white/60">minggu ini</div>
-            </div>
-            {showStreak ? (
-              <div className="rounded-2xl bg-white/10 p-4 text-center">
-                <div className="text-xs text-white/80 flex items-center justify-center gap-1">
-                  <Flame className="h-3 w-3" /> Rangkaian
-                </div>
-                <div className="font-bold text-white text-lg">{heroStreak} hari</div>
-                <div className="text-[11px] text-white/60">berturut-turut</div>
-              </div>
-            ) : (
-              <div className="rounded-2xl bg-white/10 p-4 text-center">
-                <div className="text-xs text-white/60">Anggota</div>
-                <div className="font-bold text-lg text-white">{members.length}</div>
-                <div className="text-[11px] text-white/60">dalam keluarga</div>
-              </div>
-            )}
           </div>
         </div>
+        <dl className="relative mt-5 pt-4 border-t border-white/10 grid grid-cols-3 gap-2 text-center">
+          <div>
+            <dt className="text-[11px] text-white/60">Hari terisi</dt>
+            <dd className="font-bold text-white mt-0.5 tabular-nums">{activeDays}/7</dd>
+          </div>
+          <div className="border-x border-white/10">
+            {showStreak ? (
+              <>
+                <dt className="text-[11px] text-white/60 flex items-center justify-center gap-1">
+                  <Flame className="h-3 w-3" aria-hidden="true" /> Rangkaian
+                </dt>
+                <dd className="font-bold text-white mt-0.5 tabular-nums">{heroStreak} hari</dd>
+              </>
+            ) : (
+              <>
+                <dt className="text-[11px] text-white/60">Anggota</dt>
+                <dd className="font-bold text-white mt-0.5 tabular-nums">{members.length}</dd>
+              </>
+            )}
+          </div>
+          <div>
+            {isMemberOnly ? (
+              <>
+                <dt className="text-[11px] text-white/60">Tersisa</dt>
+                <dd className="font-bold text-white mt-0.5 tabular-nums">{remainingMine} target</dd>
+              </>
+            ) : (
+              <>
+                <dt className="text-[11px] text-white/60">Sudah mengisi</dt>
+                <dd className="font-bold text-white mt-0.5 tabular-nums">{filledCount}/{members.length}</dd>
+              </>
+            )}
+          </div>
+        </dl>
       </div>
 
       {/* Anggota — daftar ringkas dalam satu kartu */}
@@ -399,7 +401,7 @@ export default function BerandaPage() {
           <h2 className="font-semibold flex items-center gap-2 text-sm">
             <Users className="h-4 w-4" /> Anggota keluarga
           </h2>
-          <Link href={isMemberOnly ? "/progress" : "/keluarga"} className="text-xs font-medium text-primary inline-flex items-center gap-1 rounded-full px-2 py-1 hover:bg-muted" aria-label={isMemberOnly ? "Lihat perjalananku" : "Kelola keluarga"}>
+          <Link href={isMemberOnly ? "/progress" : "/profil"} className="text-xs font-medium text-primary inline-flex items-center gap-1 rounded-full px-2 py-1 hover:bg-muted" aria-label={isMemberOnly ? "Lihat perjalananku" : "Kelola keluarga"}>
             {isMemberOnly ? "Perjalananku" : `Kelola (${members.length})`} <ChevronRight className="h-3.5 w-3.5" />
           </Link>
         </div>
@@ -514,7 +516,7 @@ export default function BerandaPage() {
                 <Bell className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
                 <span>
                   Belum semua terisi hari ini — tidak apa-apa.{" "}
-                  <Link href="/keluarga" className="font-medium underline underline-offset-2">
+                  <Link href="/keluarga/anggota" className="font-medium underline underline-offset-2">
                     Ingatkan dengan lembut
                   </Link>
                 </span>
@@ -549,7 +551,7 @@ export default function BerandaPage() {
               {upcoming.map((h) => (
                 <HabitCard
                   key={h.id}
-                  habit={{ id: h.id, name: h.name, category: h.category as any, type: h.type, target: h.target_value, unit: h.unit ?? undefined }}
+                  habit={{ id: h.id, name: h.name, category: h.category as HabitCategory, type: h.type, target: h.target_value, unit: h.unit ?? undefined }}
                   entry={myEntries[h.id]}
                   onToggle={() => toggleQuick(h.id)}
                   onUpdateValue={(d) => updateQuick(h.id, d)}
