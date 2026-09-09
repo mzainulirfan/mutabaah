@@ -100,34 +100,59 @@ export default function ProgressPage() {
 
   // Amalan yang sedang dilihat detailnya (sheet) — null berarti tertutup.
   const [focusHabitId, setFocusHabitId] = useState<string | null>(null);
+  const [focusRange, setFocusRange] = useState<"7" | "month" | "30">("month");
   const focusDetail = useMemo(() => {
     if (!focusHabitId) return null;
     const h = habits.find((x) => x.id === focusHabitId);
-    const series = spark[focusHabitId] ?? [];
-    if (!h || series.length === 0) return null;
+    if (!h) return null;
+    const now = new Date();
+    const days: { iso: string; dayNum: number }[] = [];
+    if (focusRange === "7") {
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        days.push({ iso: localDateKey(d), dayNum: d.getDate() });
+      }
+    } else if (focusRange === "30") {
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        days.push({ iso: localDateKey(d), dayNum: d.getDate() });
+      }
+    } else {
+      for (let d = 1; d <= now.getDate(); d++) {
+        days.push({
+          iso: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`,
+          dayNum: d,
+        });
+      }
+    }
+    const target = Number(h.target_value) || 1;
+    const series = days.map(({ iso }) => {
+      const e = dayEntries.find((x) => x.date === iso && x.habit_id === h.id);
+      const v = e ? Number(e.value) : 0;
+      if (h.type === "BOOLEAN") return v ? 100 : 0;
+      return Math.round(Math.min(100, (v / target) * 100));
+    });
     const activeDays = series.filter((v) => v > 0).length;
     let longest = 0, run = 0;
     for (const v of series) {
       if (v > 0) { run++; longest = Math.max(longest, run); }
       else run = 0;
     }
-    const avg = Math.round(series.reduce((a, b) => a + b, 0) / series.length);
-    // Konteks per hari (30 hari terakhir, tua → muda) khusus amalan sholat.
+    const avg = series.length ? Math.round(series.reduce((a, b) => a + b, 0) / series.length) : 0;
+    // Konteks per hari khusus amalan sholat.
     const isWajib = h.category === "Ibadah Wajib";
-    const contexts: ("SENDIRI" | "BERJAMAAH" | null)[] = [];
-    if (isWajib) {
-      const now = new Date();
-      for (let i = 29; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        const e = dayEntries.find((x) => x.date === localDateKey(d) && x.habit_id === h.id);
-        contexts.push(e && Number(e.value) > 0 ? (e.context ?? null) : null);
-      }
-    }
+    const contexts: ("SENDIRI" | "BERJAMAAH" | null)[] = days.map(({ iso }) => {
+      if (!isWajib) return null;
+      const e = dayEntries.find((x) => x.date === iso && x.habit_id === h.id);
+      return e && Number(e.value) > 0 ? (e.context ?? null) : null;
+    });
     const berjamaah = contexts.filter((c) => c === "BERJAMAAH").length;
     const sendiri = contexts.filter((c) => c === "SENDIRI").length;
-    return { habit: h, series, avg, activeDays, longest, isWajib, contexts, berjamaah, sendiri };
-  }, [focusHabitId, habits, spark, dayEntries]);
+    const rangeLabel = focusRange === "7" ? "7 hari terakhir" : focusRange === "30" ? "30 hari terakhir" : "bulan ini";
+    return { habit: h, series, dates: days.map((d) => d.dayNum), avg, activeDays, longest, total: days.length, isWajib, contexts, berjamaah, sendiri, rangeLabel };
+  }, [focusHabitId, habits, dayEntries, focusRange]);
 
   // Rincian mutabaah tanggal yang diketuk — null berarti sheet tertutup.
   const dayDetail = useMemo(() => {
@@ -693,7 +718,7 @@ export default function ProgressPage() {
             <div className="flex-1 min-w-0">
               <h3 className="font-bold text-lg leading-tight truncate">{focusDetail.habit.name}</h3>
               <p className="text-xs text-muted-foreground mt-1 tabular-nums">
-                Rata-rata {focusDetail.avg}% · {focusDetail.activeDays}/30 hari terisi
+                Rata-rata {focusDetail.avg}% · {focusDetail.activeDays}/{focusDetail.total} hari terisi
               </p>
             </div>
             <button
@@ -705,7 +730,24 @@ export default function ProgressPage() {
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
-          <div className="mt-4 flex items-end gap-1" role="img" aria-label={`Histori 30 hari ${focusDetail.habit.name}`}>
+          <div className="mt-4 flex gap-1 rounded-full bg-muted p-1" role="group" aria-label="Rentang histori">
+            {( [
+              { key: "7", label: "7 hari" },
+              { key: "month", label: "Bulan ini" },
+              { key: "30", label: "30 hari" },
+            ] as const ).map((r) => (
+              <button
+                key={r.key}
+                type="button"
+                onClick={() => setFocusRange(r.key)}
+                aria-pressed={focusRange === r.key}
+                className={`flex-1 rounded-full px-3 py-2 min-h-[40px] text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${focusRange === r.key ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 flex items-end gap-1" role="img" aria-label={`Histori ${focusDetail.rangeLabel} ${focusDetail.habit.name}`}>
             {focusDetail.series.map((v, i) => {
               const ctx = focusDetail.isWajib ? (focusDetail.contexts[i] ?? null) : null;
               return (
@@ -718,6 +760,13 @@ export default function ProgressPage() {
               );
             })}
           </div>
+          <div className="mt-1.5 flex gap-1" aria-hidden="true">
+            {focusDetail.dates.map((d, i) => (
+              <span key={i} className="flex-1 min-w-0 text-center text-[9px] tabular-nums text-muted-foreground">
+                {focusDetail.dates.length <= 10 ? d : d === 1 || d % 5 === 0 ? d : ""}
+              </span>
+            ))}
+          </div>
           {focusDetail.isWajib && (
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1.5">
@@ -726,13 +775,13 @@ export default function ProgressPage() {
               <span className="flex items-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-full bg-primary" aria-hidden="true" /> Sendiri · {focusDetail.sendiri}x
               </span>
-              <span className="tabular-nums">30 hari terakhir</span>
+              <span className="tabular-nums">{focusDetail.rangeLabel}</span>
             </div>
           )}
           <dl className="mt-4 pt-4 border-t border-border/60 grid grid-cols-2 gap-2 text-center">
             <div>
               <dt className="text-[11px] text-muted-foreground">Hari terisi</dt>
-              <dd className="font-bold mt-0.5 tabular-nums">{focusDetail.activeDays}/30</dd>
+              <dd className="font-bold mt-0.5 tabular-nums">{focusDetail.activeDays}/{focusDetail.total}</dd>
             </div>
             <div>
               <dt className="text-[11px] text-muted-foreground">Rangkaian terpanjang</dt>
