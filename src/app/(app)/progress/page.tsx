@@ -33,6 +33,11 @@ export default function ProgressPage() {
   const [needsLogin, setNeedsLogin] = useState(false);
   const [dayEntries, setDayEntries] = useState<EntryRow[]>([]);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  // Melihat progres anggota lain (parent saja). null = diri sendiri.
+  const [viewUserId, setViewUserId] = useState<string | null>(null);
+  const [myId, setMyId] = useState<string | null>(null);
+  const [viewerRole, setViewerRole] = useState("MEMBER");
+  const [viewMembers, setViewMembers] = useState<{ id: string; name: string }[]>([]);
 
   // localStorage hanya ada di browser — baca di dalam callback effect agar
   // prerender server tetap aman dan tidak ada setState sinkron di badan effect.
@@ -160,13 +165,20 @@ export default function ProgressPage() {
       if (!user) { setNeedsLogin(true); setLoading(false); return; }
       const family = await getFamilyContext(supabase, user.id);
       if (!family) { setLoading(false); return; }
+      setMyId(user.id);
+      setViewerRole(family.role);
+      setViewMembers(family.members.map((m) => ({ id: m.user_id, name: m.name })));
+      // Hanya pengelola boleh intip anggota lain; seleksi invalid kembali ke diri sendiri.
+      const canViewAll = family.role !== "MEMBER";
+      const targetId =
+        viewUserId && canViewAll && family.members.some((m) => m.user_id === viewUserId) ? viewUserId : user.id;
       const hRows: HabitRow[] = family.habits;
       setHabits(hRows);
       const nowForRange = new Date();
       const thirtyAgo = localDateKey(daysAgoLocal(29, nowForRange));
       const monthStartISO = `${nowForRange.getFullYear()}-${String(nowForRange.getMonth() + 1).padStart(2, "0")}-01`;
       const rangeStart = monthStartISO < thirtyAgo ? monthStartISO : thirtyAgo;
-      const { data: entries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,date,context").eq("family_id", family.familyId).eq("user_id", user.id).gte("date", rangeStart);
+      const { data: entries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,date,context").eq("family_id", family.familyId).eq("user_id", targetId).gte("date", rangeStart);
       const entryRows = (entries ?? []) as EntryRow[];
       setDayEntries(entryRows);
       const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
@@ -219,7 +231,7 @@ export default function ProgressPage() {
       else setInsight("Belum ada data bulan ini. Mulai dari satu isian hari ini.");
       setLoading(false);
     })();
-  }, [supabase, dayKey]);
+  }, [supabase, dayKey, viewUserId]);
 
   if (loading) {
     return (
@@ -266,8 +278,33 @@ export default function ProgressPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-[26px] font-bold tracking-tight leading-tight">Perjalananmu</h1>
-        <p className="text-sm text-muted-foreground mt-1 leading-6">Dibandingkan dengan dirimu kemarin — bukan dengan orang lain.</p>
+        <h1 className="text-[26px] font-bold tracking-tight leading-tight">
+          {viewUserId && viewUserId !== myId
+            ? `Perjalanan ${viewMembers.find((m) => m.id === viewUserId)?.name ?? "anggota"}`
+            : "Perjalananmu"}
+        </h1>
+        <p className="text-sm text-muted-foreground mt-1 leading-6">Dibandingkan dengan diri kemarin — bukan dengan orang lain.</p>
+        {viewerRole !== "MEMBER" && viewMembers.length > 1 && (
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Pilih anggota yang dilihat">
+            {[{ id: myId ?? "", name: "Saya" }, ...viewMembers.filter((m) => m.id !== myId)].map((m) => {
+              const active = (viewUserId ?? myId) === m.id;
+              return (
+                <button
+                  key={m.id || "saya"}
+                  type="button"
+                  onClick={() => setViewUserId(m.id === myId ? null : m.id)}
+                  aria-pressed={active}
+                  className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 min-h-[44px] text-xs font-medium border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? "bg-primary text-white border-primary" : "bg-card hover:bg-muted"}`}
+                >
+                  <span className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold ${active ? "bg-white/20 text-white" : "bg-[var(--primary-soft)] text-primary"}`} aria-hidden="true">
+                    {m.name.slice(0, 1).toUpperCase()}
+                  </span>
+                  {m.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Mingguan — panel hijau tua seperti Beranda */}
