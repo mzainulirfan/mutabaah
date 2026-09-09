@@ -34,7 +34,6 @@ export default function ProfilPage() {
 
   useEffect(() => {
     void (async () => {
-      if (!supabase) { setLoading(false); return; }
       const sessionUser = await getSessionUser(supabase);
       if (!sessionUser) { setLoading(false); return; }
       setUser({

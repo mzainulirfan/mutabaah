@@ -6,7 +6,7 @@ import { Plus, Trash2, Loader2, Check, BookOpen, Heart, Target, ChevronLeft, Che
 import Link from "next/link";
 import { Sheet } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";
-import type { HabitType } from "@/lib/mock-data";
+import type { HabitType } from "@/lib/habits";
 import { getErrorMessage } from "@/lib/utils";
 import { clearFamilyCache, getFamilyContext, getSessionUser } from "@/lib/family-context";
 
@@ -79,7 +79,6 @@ export default function AmalanPage() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!supabase) { setLoading(false); return; }
     const user = await getSessionUser(supabase);
     if (!user) { setLoading(false); return; }
     const family = await getFamilyContext(supabase, user.id);

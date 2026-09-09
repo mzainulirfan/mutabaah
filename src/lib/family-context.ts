@@ -1,4 +1,4 @@
-import type { HabitType } from "@/lib/mock-data";
+import type { HabitType } from "@/lib/habits";
 import type {
   DbClient,
   DbUser,

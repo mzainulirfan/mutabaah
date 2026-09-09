@@ -9,7 +9,8 @@ export async function updateSession(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // If no env, allow all (demo mode)
+  // Tanpa env tidak ada sesi yang bisa divalidasi — lewatkan (miskonfigurasi
+  // akan gagal cepat di halaman lewat createClient yang melempar error).
   if (!url || !key) return supabaseResponse;
 
   const supabase = createServerClient(url, key, {
@@ -26,8 +27,12 @@ export async function updateSession(request: NextRequest) {
   });
 
   const pathname = request.nextUrl.pathname;
-  const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p) || pathname.startsWith("/_next") || pathname.startsWith("/api/auth"));
-  const isProtected = ["/beranda", "/mutabaah", "/progress", "/keluarga", "/profil"].some((p) => pathname.startsWith(p));
+  // "/" hanya cocok persis — startsWith("/") akan menandai SEMUA path sebagai publik.
+  const isPublic =
+    PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/")) ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/api/auth");
+  const isProtected = ["/beranda", "/mutabaah", "/progress", "/keluarga", "/profil"].some((p) => pathname === p || pathname.startsWith(p + "/"));
 
   // Protected routes: cukup baca sesi dari cookie (tanpa network).
   // Validasi penuh tetap dilakukan per halaman via auth.getUser() + RLS.

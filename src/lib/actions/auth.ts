@@ -2,41 +2,64 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { safeNextPath } from "@/lib/utils";
 
-function sanitizeEmail(v: FormDataEntryValue | null) {
-  const s = String(v ?? "").trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) throw new Error("Email tidak valid");
-  return s;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function loginBack(next: string, msg: string) {
+  const q = `?error=${encodeURIComponent(msg)}${next !== "/beranda" ? `&next=${encodeURIComponent(next)}` : ""}`;
+  redirect(`/login${q}`);
+}
+
+function friendlySignInError(message: string): string {
+  if (/invalid login credentials/i.test(message)) return "Email atau password salah. Coba lagi pelan-pelan.";
+  if (/email not confirmed/i.test(message)) return "Email belum diverifikasi — cek kotak masuk, lalu coba lagi.";
+  if (/too many requests|rate limit/i.test(message)) return "Terlalu banyak percobaan. Tunggu sebentar, lalu coba lagi.";
+  return "Tidak bisa masuk saat ini — coba lagi.";
 }
 
 export async function login(formData: FormData) {
   const supabase = await createClient();
   if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
+  const next = safeNextPath(formData.get("next"));
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
-  if (!email || !password) redirect(`/login?error=${encodeURIComponent("Email dan password wajib")}`);
+  if (!email || !password) loginBack(next, "Email dan password wajib diisi.");
+  if (!EMAIL_RE.test(email)) loginBack(next, "Email tidak valid.");
   const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) redirect(`/login?error=${encodeURIComponent(error.message)}`);
+  if (error) loginBack(next, friendlySignInError(error.message));
   revalidatePath("/", "layout");
-  redirect("/beranda");
+  redirect(next);
+}
+
+function daftarBack(next: string, msg: string) {
+  const q = `?error=${encodeURIComponent(msg)}${next !== "/onboarding" ? `&next=${encodeURIComponent(next)}` : ""}`;
+  redirect(`/daftar${q}`);
 }
 
 export async function signup(formData: FormData) {
   const supabase = await createClient();
   if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
-  const email = sanitizeEmail(formData.get("email"));
+  const next = safeNextPath(formData.get("next"), "/onboarding");
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const name = String(formData.get("name") ?? "").trim();
-  if (name.length < 2) throw new Error("Nama minimal 2 karakter");
-  if (password.length < 6) throw new Error("Password minimal 6 karakter");
+  if (!EMAIL_RE.test(email)) daftarBack(next, "Email tidak valid.");
+  if (name.length < 2) daftarBack(next, "Nama minimal 2 karakter.");
+  if (password.length < 6) daftarBack(next, "Password minimal 6 karakter.");
   const { error } = await supabase.auth.signUp({
     email,
     password,
     options: { data: { name }, emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/auth/callback` },
   });
-  if (error) redirect(`/daftar?error=${encodeURIComponent("Gagal daftar — coba email lain")}`);
+  if (error) {
+    const msg = /already registered|already exists|already been registered/i.test(error.message)
+      ? "Email ini sudah terdaftar. Masuk saja."
+      : "Gagal mendaftar — coba email lain.";
+    daftarBack(next, msg);
+  }
   revalidatePath("/", "layout");
-  redirect("/beranda");
+  redirect(next);
 }
 
 export async function logout() {
@@ -49,7 +72,10 @@ export async function logout() {
 export async function resetPassword(formData: FormData) {
   const supabase = await createClient();
   if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
-  const email = sanitizeEmail(formData.get("email"));
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  if (!EMAIL_RE.test(email)) {
+    redirect(`/login?error=${encodeURIComponent("Isi email yang valid dulu, lalu tekan Lupa?.")}`);
+  }
   await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/auth/callback?next=/login`,
   });

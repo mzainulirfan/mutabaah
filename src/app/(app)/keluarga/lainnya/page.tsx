@@ -17,8 +17,7 @@ export default function LainnyaPage() {
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    (async () => {
-      if (!supabase) { setLoading(false); return; }
+    void (async () => {
       const user = await getSessionUser(supabase);
       if (!user) { setLoading(false); return; }
       const familyContext = await getFamilyContext(supabase, user.id);

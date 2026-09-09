@@ -5,12 +5,12 @@ PWA keluarga untuk konsistensi ibadah & kebiasaan baik — `Open → See → Tap
 ## Quick start
 
 ```bash
-cp .env.example .env.local # isi NEXT_PUBLIC_SUPABASE_URL + ANON_KEY
+cp .env.example .env.local # isi NEXT_PUBLIC_SUPABASE_URL + ANON_KEY (wajib)
 npm install
 npm run dev # http://localhost:3000
 ```
 
-Demo mode tetap jalan tanpa env Supabase (mock data + localStorage offline queue).
+Aplikasi membutuhkan env Supabase — tanpa itu halaman menampilkan error konfigurasi.
 
 ## Supabase setup
 

@@ -10,21 +10,6 @@ export default async function JoinPage({ params }: { params: Promise<{ token: st
   const { token } = await params;
   const supabase = await createClient();
 
-  // demo mode without supabase
-  if (!supabase) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-[var(--primary-soft)]/30">
-        <Card className="w-full max-w-[480px] p-8 text-center">
-          <h1 className="font-bold text-lg">Demo mode</h1>
-          <p className="text-sm text-muted-foreground mt-2">Supabase tidak terkonfigurasi. Invite link: /join/{token}</p>
-          <Link href="/beranda" className="block mt-6">
-            <Button className="w-full">Ke Beranda</Button>
-          </Link>
-        </Card>
-      </div>
-    );
-  }
-
   const token_hash = createHash("sha256").update(token).digest("hex");
   const { data: invitation } = await supabase.from("mutabaah_invitations").select("id,family_id,expires_at,used_at,created_at").eq("token_hash", token_hash).maybeSingle();
 
@@ -100,7 +85,6 @@ export default async function JoinPage({ params }: { params: Promise<{ token: st
   async function handleJoin() {
     "use server";
     const supabase = await createClient();
-    if (!supabase) redirect("/beranda");
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) redirect(`/login?next=/join/${token}`);
     const { acceptInvitation } = await import("@/lib/actions/family");

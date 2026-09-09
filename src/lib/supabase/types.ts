@@ -1,5 +1,5 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import type { EntryStatus, SholatContext } from "@/lib/mock-data";
+import type { EntryStatus, SholatContext } from "@/lib/habits";
 
 /** Klien Supabase (browser maupun server) tanpa skema generik — baris hasil query diketik di situs pakai. */
 export type DbClient = SupabaseClient;

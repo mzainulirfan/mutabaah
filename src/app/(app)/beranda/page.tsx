@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { HabitCard } from "@/components/app/habit-card";
 import { Sheet } from "@/components/ui/sheet";
 import { dailyProgress, isStreakDay } from "@/lib/progress";
-import type { Entry, HabitCategory } from "@/lib/mock-data";
+import type { Entry, HabitCategory } from "@/lib/habits";
 import { enqueue } from "@/lib/offline-queue";
 import { daysAgoLocal, localDateKey } from "@/lib/local-date";
 import { useLocalDayKey } from "@/hooks/use-local-day-key";
@@ -66,25 +66,6 @@ export default function BerandaPage() {
     // setState hanya di dalam kelanjutan async (pola fetch-on-mount yang diizinkan),
     // bukan sinkron di badan effect.
     void (async () => {
-      if (!supabase) {
-        const { members: mockMembers, weeklyData, habits: mockHabits, initialEntries } = await import("@/lib/mock-data");
-        setMembers(mockMembers.map((m) => ({ id: m.id, name: m.name, progress: m.progress, streak: m.streak, role: m.id === "m1" ? "OWNER" : "MEMBER" })));
-        setMyHabits(mockHabits.map((h, i) => ({ id: h.id, name: h.name, category: h.category, type: h.type, target_value: h.target, unit: h.unit ?? null, sort_order: i })));
-        setMyEntries(initialEntries);
-        setFamilyProgress(78);
-        setDelta(3);
-        setWeekly(weeklyData);
-        setRecent([
-          { name: "Ahmad", act: "Tilawah selesai, alhamdulillah", time: "05:42", type: "completed" },
-          { name: "Aisyah", act: "Dzikir pagi selesai, alhamdulillah", time: "06:10", type: "completed" },
-          { name: "Yusuf", act: "Mutabaah hari ini menunggu diisi", time: "—", type: "pending" },
-        ]);
-        setRole("OWNER");
-        setUserId("m1");
-        setUserName("Ayah");
-        setLoading(false);
-        return;
-      }
       const user = await getSessionUser(supabase);
       if (!user) { setLoading(false); return; }
       setUserId(user.id);

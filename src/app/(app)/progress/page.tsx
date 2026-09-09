@@ -29,6 +29,7 @@ export default function ProgressPage() {
   const [monthDays, setMonthDays] = useState<{ day: number; progress: number | null; status: ReturnType<typeof calendarStatus> }[]>([]);
   const [showAll, setShowAll] = useState(false);
   const [showStreak, setShowStreak] = useState(true);
+  const [needsLogin, setNeedsLogin] = useState(false);
 
   // localStorage hanya ada di browser — baca di dalam callback effect agar
   // prerender server tetap aman dan tidak ada setState sinkron di badan effect.
@@ -50,23 +51,8 @@ export default function ProgressPage() {
 
   useEffect(() => {
     void (async () => {
-      if (!supabase) {
-        const { weeklyData, habits: mockHabits } = await import("@/lib/mock-data");
-        setWeekly(weeklyData);
-        setAvgWeekly(82);
-        setBestDay({ day: "Kam", value: 94 });
-        setActiveDays(7);
-        setStreak(7);
-        setHabits(mockHabits.map((h) => ({ id: h.id, name: h.name, category: h.category, type: h.type, target_value: h.target })));
-        setBreakdown(mockHabits.slice(0, 6).map((h) => ({ id: h.id, name: h.name, category: h.category, pct: 70 + Math.floor(Math.random() * 30) })));
-        setMonthStats({ avg: 78, perfect: 9, longest: 12 });
-        setInsight("Tilawah menjadi kebiasaan paling konsisten bulan ini. Dzikir petang perlu perhatian (54%).");
-        setMonthDays(Array.from({ length: 30 }, (_, i) => ({ day: i + 1, progress: 60 + Math.random() * 40, status: "completed" as const })));
-        setLoading(false);
-        return;
-      }
       const user = await getSessionUser(supabase);
-      if (!user) { setLoading(false); return; }
+      if (!user) { setNeedsLogin(true); setLoading(false); return; }
       const family = await getFamilyContext(supabase, user.id);
       if (!family) { setLoading(false); return; }
       const hRows: HabitRow[] = family.habits;
@@ -137,6 +123,20 @@ export default function ProgressPage() {
           <div className="h-64 rounded-[20px] bg-muted" />
           <div className="h-64 rounded-[20px] bg-muted" />
         </div>
+      </div>
+    );
+  }
+
+  if (needsLogin) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-10 text-center rounded-[24px] border-dashed">
+          <h2 className="font-semibold mt-3">Masuk dulu, yuk</h2>
+          <p className="text-sm text-muted-foreground mt-1 leading-6">Perjalanan konsistensimu tersimpan di akunmu. Masuk untuk melihatnya.</p>
+          <Link href="/login?next=/progress" className="inline-block mt-5">
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary text-white text-sm font-medium px-5 py-2.5">Masuk <ArrowRight className="h-4 w-4" /></span>
+          </Link>
+        </Card>
       </div>
     );
   }

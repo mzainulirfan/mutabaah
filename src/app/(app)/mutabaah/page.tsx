@@ -2,7 +2,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { Entry, HabitCategory } from "@/lib/mock-data";
+import type { Entry, HabitCategory } from "@/lib/habits";
 import { HabitCard } from "@/components/app/habit-card";
 import { ProgressRing } from "@/components/app/progress-ring";
 import { Card } from "@/components/ui/card";
@@ -37,6 +37,7 @@ export default function MutabaahPage() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -45,28 +46,14 @@ export default function MutabaahPage() {
       setLoading(true);
       const iso = localDateKey(d);
       try {
-        if (!supabase) {
-          const { habits: mockHabits, initialEntries } = await import("@/lib/mock-data");
-          setDbHabits(mockHabits.map((h) => ({ id: h.id, name: h.name, category: h.category, type: h.type, target_value: h.target, unit: h.unit ?? null })));
-          setEntries(initialEntries);
-          setNoteText("");
-          setNoteLoaded("");
-          setNoteSaved(false);
-          setLoading(false);
-          return;
-        }
         const user = await getSessionUser(supabase);
         if (!user) {
-          const { habits: mockHabits, initialEntries } = await import("@/lib/mock-data");
-          setDbHabits(mockHabits.map((h) => ({ id: h.id, name: h.name, category: h.category, type: h.type, target_value: h.target, unit: h.unit ?? null })));
-          setEntries(initialEntries);
-          setNoteText("");
-          setNoteLoaded("");
-          setNoteSaved(false);
           setUserId(null);
+          setNeedsLogin(true);
           setLoading(false);
           return;
         }
+        setNeedsLogin(false);
         setUserId(user.id);
         const family = await getFamilyContext(supabase, user.id);
         if (!family) {
@@ -278,6 +265,25 @@ export default function MutabaahPage() {
             <div key={i} className="h-[76px] rounded-[20px] bg-muted" />
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (needsLogin) {
+    return (
+      <div className="mx-auto max-w-[720px] space-y-6">
+        <Card className="p-8 text-center rounded-[24px] border-dashed">
+          <h3 className="font-bold text-lg mt-4">Masuk dulu, yuk</h3>
+          <p className="text-sm text-muted-foreground mt-1 max-w-[36ch] mx-auto leading-6">Mutabaah harianmu tersimpan di akunmu. Masuk untuk melihat dan mengisi target hari ini.</p>
+          <div className="mt-5 flex justify-center gap-2">
+            <Button className="rounded-full" onClick={() => router.push("/login?next=/mutabaah")}>
+              Masuk
+            </Button>
+            <Button variant="secondary" className="rounded-full" onClick={() => router.push("/daftar?next=/onboarding")}>
+              Daftar
+            </Button>
+          </div>
+        </Card>
       </div>
     );
   }

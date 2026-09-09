@@ -39,8 +39,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const supabase = createClient();
-    if (!supabase) return;
-    (async () => {
+    void (async () => {
       const user = await getSessionUser(supabase);
       if (!user) return;
       setUserName((user.user_metadata?.name as string) ?? user.email?.split("@")[0] ?? "Ayah");

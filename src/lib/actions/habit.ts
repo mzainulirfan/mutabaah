@@ -49,7 +49,7 @@ export async function deleteHabit(id: string) {
 
 export async function getTodayMutabaah(familyId: string, userId: string, date: string) {
   const supabase = await createClient();
-  if (!supabase) return null;
+  if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
   const { data: habits } = await supabase.from(T_HABITS).select("*").eq("family_id", familyId).eq("is_active", true).order("sort_order");
   const { data: entries } = await supabase.from(T_ENTRIES).select("*").eq("user_id", userId).eq("date", date);
   return { habits, entries };

@@ -1,8 +1,8 @@
 "use client";
 import { cn } from "@/lib/utils";
 import { Check, Minus, Plus } from "lucide-react";
-import type { Habit, Entry } from "@/lib/mock-data";
-import { getHabitProgress } from "@/lib/mock-data";
+import type { Habit, Entry } from "@/lib/habits";
+import { getHabitProgress } from "@/lib/habits";
 
 export function HabitCard({
   habit,

@@ -422,11 +422,6 @@ export default function LandingPage() {
                   Masuk
                 </Link>
               </li>
-              <li>
-                <Link href="/beranda" className="hover:text-primary">
-                  Lihat demo
-                </Link>
-              </li>
             </ul>
           </nav>
         </div>

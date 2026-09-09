@@ -23,7 +23,6 @@ export default function AnggotaPage() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!supabase) { setLoading(false); return; }
     const user = await getSessionUser(supabase);
     if (!user) { setLoading(false); return; }
     const family = await getFamilyContext(supabase, user.id);

@@ -67,7 +67,7 @@ function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : "Terjadi kesalahan. Coba lagi.";
 }
 
-type Gate = "checking" | "demo" | "auth" | "ready";
+type Gate = "checking" | "auth" | "ready";
 
 export default function OnboardingPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -86,11 +86,7 @@ export default function OnboardingPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    (async () => {
-      if (!supabase) {
-        setGate("demo");
-        return;
-      }
+    void (async () => {
       const { data } = await supabase.auth.getUser();
       setGate(data.user ? "ready" : "auth");
     })();
@@ -204,23 +200,6 @@ export default function OnboardingPage() {
           {gate === "checking" && (
             <Card className="mt-6 p-8 flex items-center justify-center gap-2 text-sm text-muted-foreground" aria-busy="true" aria-label="Memuat">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Menyiapkan panduan…
-            </Card>
-          )}
-
-          {gate === "demo" && (
-            <Card className="mt-6 p-6 sm:p-8 text-center">
-              <h2 className="font-semibold text-lg">Mode demo aktif</h2>
-              <p className="text-sm text-muted-foreground mt-2 leading-6">
-                Aplikasi berjalan tanpa koneksi database, jadi pembuatan keluarga memakai data contoh. Untuk menyimpan permanen, hubungkan Supabase lalu daftar akun.
-              </p>
-              <div className="mt-5 flex flex-wrap justify-center gap-2">
-                <Link href="/beranda" className={buttonStyles("primary", "lg")}>
-                  Jelajahi demo <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
-                </Link>
-                <Link href="/" className={buttonStyles("secondary", "lg")}>
-                  Kembali ke awal
-                </Link>
-              </div>
             </Card>
           )}
 

@@ -26,14 +26,14 @@ export async function createFamily(formData: FormData) {
 export async function updateFamily(familyId: string, formData: FormData) {
   const name = formData.get("name") as string;
   const supabase = await createClient();
-  if (!supabase) return;
+  if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
   await supabase.from(T_FAMILIES).update({ name }).eq("id", familyId);
   revalidatePath("/keluarga");
 }
 
 export async function createInvitation(familyId: string) {
   const supabase = await createClient();
-  if (!supabase) return { token: "demo-token-123", url: `http://localhost:3000/join/demo-token-123` };
+  if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
   const { data: user } = await supabase.auth.getUser();
   if (!user.user) throw new Error("Unauthorized");
   const token = randomBytes(24).toString("hex");
@@ -57,7 +57,7 @@ export async function acceptInvitation(token: string) {
 
 export async function removeFamilyMember(familyId: string, userId: string) {
   const supabase = await createClient();
-  if (!supabase) return;
+  if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error("Unauthorized");
   const { error } = await supabase.from(T_MEMBERS).delete().eq("family_id", familyId).eq("user_id", userId);
