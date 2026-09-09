@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { ProgressRing } from "@/components/app/progress-ring";
-import { Flame, Trophy, CalendarDays, TrendingUp, ArrowRight, X, Users, User } from "lucide-react";
+import { Flame, Trophy, CalendarDays, TrendingUp, ArrowRight, Check, X, Users, User } from "lucide-react";
 import Link from "next/link";
 import { Sheet } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";
@@ -76,11 +76,11 @@ export default function ProgressPage() {
     };
   }, []);
 
-  // Mini-grafik 7 hari terakhir per amalan — hijau penuh, amber sebagian, kosong terlewat.
+  // Deret 30 hari per amalan — dipakai mini-grafik 7 hari dan sheet detail.
   const spark = useMemo(() => {
     const days: string[] = [];
     const now = new Date();
-    for (let i = 6; i >= 0; i--) {
+    for (let i = 29; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
       days.push(localDateKey(d));
@@ -97,6 +97,37 @@ export default function ProgressPage() {
     }
     return map;
   }, [habits, dayEntries]);
+
+  // Amalan yang sedang dilihat detailnya (sheet) — null berarti tertutup.
+  const [focusHabitId, setFocusHabitId] = useState<string | null>(null);
+  const focusDetail = useMemo(() => {
+    if (!focusHabitId) return null;
+    const h = habits.find((x) => x.id === focusHabitId);
+    const series = spark[focusHabitId] ?? [];
+    if (!h || series.length === 0) return null;
+    const activeDays = series.filter((v) => v > 0).length;
+    let longest = 0, run = 0;
+    for (const v of series) {
+      if (v > 0) { run++; longest = Math.max(longest, run); }
+      else run = 0;
+    }
+    const avg = Math.round(series.reduce((a, b) => a + b, 0) / series.length);
+    // Konteks per hari (30 hari terakhir, tua → muda) khusus amalan sholat.
+    const isWajib = h.category === "Ibadah Wajib";
+    const contexts: ("SENDIRI" | "BERJAMAAH" | null)[] = [];
+    if (isWajib) {
+      const now = new Date();
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const e = dayEntries.find((x) => x.date === localDateKey(d) && x.habit_id === h.id);
+        contexts.push(e && Number(e.value) > 0 ? (e.context ?? null) : null);
+      }
+    }
+    const berjamaah = contexts.filter((c) => c === "BERJAMAAH").length;
+    const sendiri = contexts.filter((c) => c === "SENDIRI").length;
+    return { habit: h, series, avg, activeDays, longest, isWajib, contexts, berjamaah, sendiri };
+  }, [focusHabitId, habits, spark, dayEntries]);
 
   // Rincian mutabaah tanggal yang diketuk — null berarti sheet tertutup.
   const dayDetail = useMemo(() => {
@@ -156,8 +187,9 @@ export default function ProgressPage() {
     }
     const wajibDone = items.filter((i) => i.category === "Ibadah Wajib" && i.status === "done");
     const berjamaah = wajibDone.filter((i) => i.context === "BERJAMAAH").length;
+    const sendiri = wajibDone.filter((i) => i.context === "SENDIRI").length;
     const note = dayEntries.map((x) => (x.date === iso ? x.note?.trim() : "")).find((n) => n) ?? "";
-    return { day, iso, label: calMeta.label(day), progress: dailyProgress(items), items, groups, strip, berjamaah, sendiri: wajibDone.length - berjamaah, note };
+    return { day, iso, label: calMeta.label(day), progress: dailyProgress(items), items, groups, strip, berjamaah, sendiri, note };
   }, [selectedDay, calMeta, dayEntries, habits]);
 
   useEffect(() => {
@@ -385,7 +417,7 @@ export default function ProgressPage() {
             </h3>
             <span className="text-[11px] bg-muted px-2 py-0.5 rounded-full font-medium">30 hari terakhir</span>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">Diurut dari yang paling terjaga · grafik 7 hari terakhir.</p>
+          <p className="text-xs text-muted-foreground mt-1">Diurut dari yang paling terjaga · ketuk untuk histori 30 hari.</p>
           <div className="mt-5 space-y-5">
             {(showAll ? breakdown : breakdown.slice(0, 6)).map((h) => {
               const status = h.pct >= 80 ? "Terjaga" : h.pct >= 50 ? "Bertumbuh" : "Baru dimulai";
@@ -396,14 +428,20 @@ export default function ProgressPage() {
                     ? { badge: "bg-amber-50 text-amber-700" }
                     : { badge: "bg-muted text-muted-foreground" };
               return (
-                <div key={h.id}>
+                <button
+                  key={h.id}
+                  type="button"
+                  onClick={() => setFocusHabitId(h.id)}
+                  aria-label={`Lihat histori 30 hari ${h.name}, rata-rata ${h.pct} persen`}
+                  className="block w-full text-left rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
                   <div className="flex items-center justify-between gap-2 text-sm">
                     <span className="font-medium truncate">{h.name}</span>
                     <span className={`font-bold text-xs px-2 py-0.5 rounded-full tabular-nums shrink-0 ${tone.badge}`}>{h.pct}%</span>
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">{h.category} · {status} · 30 hari</div>
                   <div className="mt-2 flex items-end gap-1" role="img" aria-label={`${h.name} tujuh hari terakhir`}>
-                    {(spark[h.id] ?? []).map((v, i) => (
+                    {(spark[h.id] ?? []).slice(-7).map((v, i) => (
                       <div key={i} className="flex-1 rounded-full bg-muted overflow-hidden flex items-end" style={{ height: "24px" }}>
                         <div
                           className={`w-full rounded-full ${v >= 100 ? "bg-primary" : v > 0 ? "bg-amber-500" : "bg-transparent"}`}
@@ -412,7 +450,7 @@ export default function ProgressPage() {
                       </div>
                     ))}
                   </div>
-                </div>
+                </button>
               );
             })}
             {breakdown.length === 0 && (
@@ -573,25 +611,30 @@ export default function ProgressPage() {
               <div className="grid grid-cols-5 gap-1.5" role="list" aria-label="Sholat lima waktu">
                 {dayDetail.strip.map((s) => {
                   const it = s.item;
-                  const state = !it ? "missing" : it.status === "done" && it.context === "BERJAMAAH" ? "jamaah" : it.status === "done" ? "sendiri" : it.status === "partial" ? "partial" : "todo";
+                  // Kosong (data lama) = netral "Selesai", bukan "Sendiri" — agar tak menyesatkan.
+                  const state = !it ? "missing" : it.status === "done" && it.context === "BERJAMAAH" ? "jamaah" : it.status === "done" && it.context === "SENDIRI" ? "sendiri" : it.status === "done" ? "done" : it.status === "partial" ? "partial" : "todo";
                   return (
                     <div
                       key={s.key}
                       role="listitem"
-                      aria-label={`${s.label}${!it ? " — tidak ada target" : it.status === "done" ? (it.context === "BERJAMAAH" ? " — berjamaah di masjid" : " — sholat sendiri") : it.status === "partial" ? " — sebagian" : " — belum diisi"}`}
-                      title={`${s.label}${!it ? " — tidak ada target" : it.status === "done" ? (it.context === "BERJAMAAH" ? " — berjamaah di masjid" : " — sholat sendiri") : ""}`}
+                      aria-label={`${s.label}${!it ? " — tidak ada target" : it.status === "done" ? (it.context === "BERJAMAAH" ? " — berjamaah di masjid" : it.context === "SENDIRI" ? " — sholat sendiri" : " — selesai") : it.status === "partial" ? " — sebagian" : " — belum diisi"}`}
+                      title={`${s.label}${!it ? " — tidak ada target" : it.status === "done" ? (it.context === "BERJAMAAH" ? " — berjamaah di masjid" : it.context === "SENDIRI" ? " — sholat sendiri" : " — selesai") : ""}`}
                       className={`rounded-2xl border py-2.5 px-1 text-center transition-colors
                         ${state === "jamaah" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : ""}
                         ${state === "sendiri" ? "bg-[var(--primary-soft)] border-primary/20 text-primary" : ""}
+                        ${state === "done" ? "bg-[var(--primary-soft)]/50 border-primary/10 text-primary" : ""}
                         ${state === "partial" ? "bg-amber-50 border-amber-200 text-amber-700" : ""}
                         ${state === "todo" ? "bg-card border-border text-muted-foreground" : ""}
                         ${state === "missing" ? "bg-transparent border-dashed border-border text-muted-foreground/50" : ""}
                       `}
                     >
                       <span className="flex justify-center" aria-hidden="true">
-                        {state === "jamaah" ? <Users className="h-4 w-4" /> : state === "sendiri" ? <User className="h-4 w-4" /> : state === "partial" ? <span className="h-2 w-2 mt-1 bg-amber-500 rounded-full" /> : state === "todo" ? <span className="h-2 w-2 mt-1 rounded-full border border-current" /> : <span className="h-2 w-2 mt-1">–</span>}
+                        {state === "jamaah" ? <Users className="h-4 w-4" /> : state === "sendiri" ? <User className="h-4 w-4" /> : state === "done" ? <Check className="h-4 w-4" /> : state === "partial" ? <span className="h-2 w-2 mt-1 bg-amber-500 rounded-full" /> : state === "todo" ? <span className="h-2 w-2 mt-1 rounded-full border border-current" /> : <span className="h-2 w-2 mt-1">–</span>}
                       </span>
                       <span className="block mt-1 text-[10px] font-semibold leading-tight truncate px-0.5">{s.label}</span>
+                      <span className="block text-[9px] leading-tight mt-0.5 truncate px-0.5 opacity-80">
+                        {state === "jamaah" ? "Masjid" : state === "sendiri" ? "Sendiri" : state === "done" ? "Selesai" : state === "partial" ? "Sebagian" : state === "todo" ? "Belum" : "—"}
+                      </span>
                     </div>
                   );
                 })}
@@ -614,12 +657,20 @@ export default function ProgressPage() {
                       />
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm truncate">{i.name}</span>
-                        {i.category === "Ibadah Wajib" && i.status === "done" && (
+                        {i.category === "Ibadah Wajib" && i.status === "done" && i.context === "BERJAMAAH" && (
                           <span
-                            className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border ${i.context === "BERJAMAAH" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-muted text-muted-foreground border-transparent"}`}
+                            className="mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border bg-emerald-50 text-emerald-700 border-emerald-200"
                           >
-                            {i.context === "BERJAMAAH" ? <Users className="h-3 w-3" aria-hidden="true" /> : <User className="h-3 w-3" aria-hidden="true" />}
-                            {i.context === "BERJAMAAH" ? "Berjamaah di masjid" : "Sholat sendiri"}
+                            <Users className="h-3 w-3" aria-hidden="true" />
+                            Berjamaah di masjid
+                          </span>
+                        )}
+                        {i.category === "Ibadah Wajib" && i.status === "done" && i.context === "SENDIRI" && (
+                          <span
+                            className="mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border bg-muted text-muted-foreground border-transparent"
+                          >
+                            <User className="h-3 w-3" aria-hidden="true" />
+                            Sholat sendiri
                           </span>
                         )}
                       </span>
@@ -632,6 +683,69 @@ export default function ProgressPage() {
               </section>
             ))}
           </div>
+        </Sheet>
+      )}
+
+      {/* Histori amalan — bottom sheet, muncul saat baris rincian diketuk */}
+      {focusDetail && (
+        <Sheet label={`Histori 30 hari ${focusDetail.habit.name}`} onClose={() => setFocusHabitId(null)}>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-lg leading-tight truncate">{focusDetail.habit.name}</h3>
+              <p className="text-xs text-muted-foreground mt-1 tabular-nums">
+                Rata-rata {focusDetail.avg}% · {focusDetail.activeDays}/30 hari terisi
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFocusHabitId(null)}
+              aria-label="Tutup histori"
+              className="h-11 w-11 -mr-2 rounded-full flex items-center justify-center hover:bg-muted shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+          <div className="mt-4 flex items-end gap-1" role="img" aria-label={`Histori 30 hari ${focusDetail.habit.name}`}>
+            {focusDetail.series.map((v, i) => {
+              const ctx = focusDetail.isWajib ? (focusDetail.contexts[i] ?? null) : null;
+              return (
+                <div key={i} className="flex-1 rounded-full bg-muted overflow-hidden flex items-end min-w-0" style={{ height: "64px" }}>
+                  <div
+                    className={`w-full rounded-full ${v >= 100 ? (ctx === "BERJAMAAH" ? "bg-emerald-500" : "bg-primary") : v > 0 ? "bg-amber-500" : "bg-transparent"}`}
+                    style={{ height: v > 0 ? `${Math.max(v, 12)}%` : "0%" }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          {focusDetail.isWajib && (
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" aria-hidden="true" /> Berjamaah · {focusDetail.berjamaah}x
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-primary" aria-hidden="true" /> Sendiri · {focusDetail.sendiri}x
+              </span>
+              <span className="tabular-nums">30 hari terakhir</span>
+            </div>
+          )}
+          <dl className="mt-4 pt-4 border-t border-border/60 grid grid-cols-2 gap-2 text-center">
+            <div>
+              <dt className="text-[11px] text-muted-foreground">Hari terisi</dt>
+              <dd className="font-bold mt-0.5 tabular-nums">{focusDetail.activeDays}/30</dd>
+            </div>
+            <div>
+              <dt className="text-[11px] text-muted-foreground">Rangkaian terpanjang</dt>
+              <dd className="font-bold mt-0.5 tabular-nums">{focusDetail.longest} hari</dd>
+            </div>
+          </dl>
+          <p className="mt-3 text-xs text-muted-foreground leading-5">
+            {focusDetail.avg >= 80
+              ? "Terjaga dengan baik — pertahankan pelan-pelan."
+              : focusDetail.avg >= 50
+                ? "Bertumbuh — temani pelan-pelan."
+                : "Baru dimulai — mulai dari target terkecil."}
+          </p>
         </Sheet>
       )}
     </div>
