@@ -2,8 +2,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { ProgressRing } from "@/components/app/progress-ring";
-import { Flame, Trophy, CalendarDays, TrendingUp, ArrowRight } from "lucide-react";
+import { Flame, Trophy, CalendarDays, TrendingUp, ArrowRight, X, Users, User } from "lucide-react";
 import Link from "next/link";
+import { Sheet } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";
 import { dailyProgress, isStreakDay, calendarStatus } from "@/lib/progress";
 import { daysAgoLocal, localDateKey } from "@/lib/local-date";
@@ -11,7 +12,7 @@ import { useLocalDayKey } from "@/hooks/use-local-day-key";
 import type { EntryRow } from "@/lib/supabase/types";
 import { getFamilyContext, getSessionUser } from "@/lib/family-context";
 
-type HabitRow = { id: string; name: string; category: string; type: string; target_value: number };
+type HabitRow = { id: string; name: string; category: string; type: string; target_value: number; unit?: string | null };
 
 export default function ProgressPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -30,6 +31,8 @@ export default function ProgressPage() {
   const [showAll, setShowAll] = useState(false);
   const [showStreak, setShowStreak] = useState(true);
   const [needsLogin, setNeedsLogin] = useState(false);
+  const [dayEntries, setDayEntries] = useState<EntryRow[]>([]);
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
   // localStorage hanya ada di browser — baca di dalam callback effect agar
   // prerender server tetap aman dan tidak ada setState sinkron di badan effect.
@@ -49,6 +52,108 @@ export default function ProgressPage() {
     return `${fmt(start)} — ${fmt(end)}`;
   });
 
+  // Meta kalender dihitung sekali per render dari tanggal lokal (di dalam callback
+  // agar aman dari aturan purity) — dipakai grid tanggal dan kartu rincian.
+  const calMeta = useMemo(() => {
+    const nowD = new Date();
+    const year = nowD.getFullYear();
+    const month = nowD.getMonth();
+    return {
+      year,
+      month,
+      todayNum: nowD.getDate(),
+      firstOffset: (new Date(year, month, 1).getDay() + 6) % 7,
+      monthLabel: nowD.toLocaleDateString("id-ID", { month: "long", year: "numeric" }),
+      monthShort: nowD.toLocaleDateString("id-ID", { month: "long" }),
+      iso: (day: number) => `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+      label: (day: number) =>
+        new Date(year, month, day).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" }),
+    };
+  }, []);
+
+  // Mini-grafik 7 hari terakhir per amalan — hijau penuh, amber sebagian, kosong terlewat.
+  const spark = useMemo(() => {
+    const days: string[] = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      days.push(localDateKey(d));
+    }
+    const map: Record<string, number[]> = {};
+    for (const h of habits) {
+      const target = Number(h.target_value) || 1;
+      map[h.id] = days.map((iso) => {
+        const e = dayEntries.find((x) => x.date === iso && x.habit_id === h.id);
+        const v = e ? Number(e.value) : 0;
+        if (h.type === "BOOLEAN") return v ? 100 : 0;
+        return Math.round(Math.min(100, (v / target) * 100));
+      });
+    }
+    return map;
+  }, [habits, dayEntries]);
+
+  // Rincian mutabaah tanggal yang diketuk — null berarti sheet tertutup.
+  const dayDetail = useMemo(() => {
+    if (selectedDay === null) return null;
+    const day = selectedDay;
+    const iso = calMeta.iso(day);
+    type DayItem = {
+      id: string;
+      name: string;
+      category: string;
+      type: string;
+      value: number;
+      target: number;
+      unit: string;
+      context: "SENDIRI" | "BERJAMAAH" | null;
+      status: "done" | "partial" | "todo";
+    };
+    const items: DayItem[] = habits.map((h) => {
+      const e = dayEntries.find((x) => x.date === iso && x.habit_id === h.id);
+      const value = e ? Number(e.value) : 0;
+      const target = Number(h.target_value) || 1;
+      const done = value >= target && value > 0;
+      const partial = value > 0 && !done;
+      const unit = h.unit ?? (h.type === "DURATION" ? "menit" : h.type === "QUANTITY" || h.type === "COUNTER" ? "kali" : "");
+      return {
+        id: h.id,
+        name: h.name,
+        category: h.category,
+        type: h.type,
+        value,
+        target,
+        unit,
+        context: e?.context ?? null,
+        status: done ? ("done" as const) : partial ? ("partial" as const) : ("todo" as const),
+      };
+    });
+    // Strip sholat 5 waktu — urut waktu sholat, bukan urut daftar.
+    const PRAYERS = [
+      { key: "subuh", label: "Subuh", match: ["subuh"] },
+      { key: "dzuhur", label: "Dzuhur", match: ["dzuhur", "duhur", "lohor", "zuhur"] },
+      { key: "ashar", label: "Ashar", match: ["ashar", "asar"] },
+      { key: "maghrib", label: "Maghrib", match: ["maghrib"] },
+      { key: "isya", label: "Isya", match: ["isya", "isha"] },
+    ];
+    const used = new Set<string>();
+    const strip = PRAYERS.map((p) => {
+      const found = items.find((i) => !used.has(i.id) && i.category === "Ibadah Wajib" && p.match.some((k) => i.name.toLowerCase().includes(k)));
+      if (found) used.add(found.id);
+      return { ...p, item: found ?? null };
+    });
+    const groups: { category: string; items: DayItem[] }[] = [];
+    for (const i of items) {
+      if (used.has(i.id)) continue;
+      const g = groups.find((x) => x.category === i.category);
+      if (g) g.items.push(i);
+      else groups.push({ category: i.category, items: [i] });
+    }
+    const wajibDone = items.filter((i) => i.category === "Ibadah Wajib" && i.status === "done");
+    const berjamaah = wajibDone.filter((i) => i.context === "BERJAMAAH").length;
+    return { day, iso, label: calMeta.label(day), progress: dailyProgress(items), items, groups, strip, berjamaah, sendiri: wajibDone.length - berjamaah };
+  }, [selectedDay, calMeta, dayEntries, habits]);
+
   useEffect(() => {
     void (async () => {
       const user = await getSessionUser(supabase);
@@ -61,8 +166,9 @@ export default function ProgressPage() {
       const thirtyAgo = localDateKey(daysAgoLocal(29, nowForRange));
       const monthStartISO = `${nowForRange.getFullYear()}-${String(nowForRange.getMonth() + 1).padStart(2, "0")}-01`;
       const rangeStart = monthStartISO < thirtyAgo ? monthStartISO : thirtyAgo;
-      const { data: entries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,date").eq("family_id", family.familyId).eq("user_id", user.id).gte("date", rangeStart);
+      const { data: entries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,date,context").eq("family_id", family.familyId).eq("user_id", user.id).gte("date", rangeStart);
       const entryRows = (entries ?? []) as EntryRow[];
+      setDayEntries(entryRows);
       const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
       const weekVals: { day: string; value: number }[] = [];
       for (let i = 6; i >= 0; i--) {
@@ -241,25 +347,32 @@ export default function ProgressPage() {
             </h3>
             <span className="text-[11px] bg-muted px-2 py-0.5 rounded-full font-medium">30 hari terakhir</span>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">Diurut dari yang paling terjaga.</p>
-          <div className="mt-5 space-y-4">
+          <p className="text-xs text-muted-foreground mt-1">Diurut dari yang paling terjaga · grafik 7 hari terakhir.</p>
+          <div className="mt-5 space-y-5">
             {(showAll ? breakdown : breakdown.slice(0, 6)).map((h) => {
               const status = h.pct >= 80 ? "Terjaga" : h.pct >= 50 ? "Bertumbuh" : "Baru dimulai";
               const tone =
                 h.pct >= 80
-                  ? { badge: "bg-[var(--primary-soft)] text-primary", bar: "bg-primary" }
+                  ? { badge: "bg-[var(--primary-soft)] text-primary" }
                   : h.pct >= 50
-                    ? { badge: "bg-amber-50 text-amber-700", bar: "bg-amber-500" }
-                    : { badge: "bg-muted text-muted-foreground", bar: "bg-zinc-300" };
+                    ? { badge: "bg-amber-50 text-amber-700" }
+                    : { badge: "bg-muted text-muted-foreground" };
               return (
                 <div key={h.id}>
                   <div className="flex items-center justify-between gap-2 text-sm">
                     <span className="font-medium truncate">{h.name}</span>
                     <span className={`font-bold text-xs px-2 py-0.5 rounded-full tabular-nums shrink-0 ${tone.badge}`}>{h.pct}%</span>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{h.category} · {status}</div>
-                  <div className="mt-1.5 h-2 rounded-full bg-muted overflow-hidden" role="progressbar" aria-valuenow={h.pct} aria-valuemin={0} aria-valuemax={100} aria-label={`Keterjagaan ${h.name} 30 hari terakhir`}>
-                    <div className={`h-full rounded-full transition-all ${tone.bar}`} style={{ width: `${h.pct}%` }} />
+                  <div className="text-xs text-muted-foreground mt-0.5">{h.category} · {status} · 30 hari</div>
+                  <div className="mt-2 flex items-end gap-1" role="img" aria-label={`${h.name} tujuh hari terakhir`}>
+                    {(spark[h.id] ?? []).map((v, i) => (
+                      <div key={i} className="flex-1 rounded-full bg-muted overflow-hidden flex items-end" style={{ height: "24px" }}>
+                        <div
+                          className={`w-full rounded-full ${v >= 100 ? "bg-primary" : v > 0 ? "bg-amber-500" : "bg-transparent"}`}
+                          style={{ height: v > 0 ? `${Math.max(v, 25)}%` : "0%" }}
+                        />
+                      </div>
+                    ))}
                   </div>
                 </div>
               );
@@ -281,73 +394,86 @@ export default function ProgressPage() {
 
         {/* Monthly */}
         <Card className="rounded-[20px] p-5">
-          <h3 className="font-semibold flex items-center gap-2">
-            <Trophy className="h-4 w-4 text-amber-600" /> Bulan ini · {new Date().toLocaleDateString("id-ID", { month: "long" })}
+          <h3 className="font-semibold flex items-center gap-2 capitalize">
+            <Trophy className="h-4 w-4 text-amber-600" aria-hidden="true" /> Bulan ini · {calMeta.monthShort}
           </h3>
-          <div className="mt-4 grid grid-cols-3 gap-3 text-center">
-            <div className="rounded-2xl bg-muted p-4">
-              <div className="text-xl font-bold">{monthStats.avg}%</div>
-              <div className="text-xs text-muted-foreground">Rata-rata</div>
+          <div className="mt-4 flex items-center gap-5">
+            <div className="shrink-0">
+              <div className="text-[44px] font-bold leading-none tracking-tight tabular-nums">{monthStats.avg}<span className="text-xl text-muted-foreground">%</span></div>
+              <div className="text-xs text-muted-foreground mt-1.5">rata-rata 30 hari</div>
             </div>
-            <div className="rounded-2xl border p-4">
-              <div className="text-xl font-bold flex items-center justify-center gap-1">
-                <Trophy className="h-4 w-4 text-amber-600" />
-                {monthStats.perfect}
+            <div className="flex-1 min-w-0 space-y-2.5 border-l border-border/70 pl-5">
+              <div className="flex items-center gap-2.5">
+                <span className="h-9 w-9 rounded-xl bg-amber-50 flex items-center justify-center shrink-0" aria-hidden="true">
+                  <Trophy className="h-4 w-4 text-amber-600" />
+                </span>
+                <div className="min-w-0">
+                  <div className="font-bold tabular-nums leading-none">{monthStats.perfect} <span className="text-xs font-medium text-muted-foreground">hari penuh</span></div>
+                  <div className="text-[11px] text-muted-foreground mt-1">terisi 100%</div>
+                </div>
               </div>
-              <div className="text-xs text-muted-foreground">Hari penuh</div>
-            </div>
-            <div className="rounded-2xl border p-4">
-              <div className="text-xl font-bold">{monthStats.longest}</div>
-              <div className="text-xs text-muted-foreground">Rangkaian terpanjang</div>
+              <div className="flex items-center gap-2.5">
+                <span className="h-9 w-9 rounded-xl bg-[var(--primary-soft)] flex items-center justify-center shrink-0" aria-hidden="true">
+                  <Flame className="h-4 w-4 text-primary" />
+                </span>
+                <div className="min-w-0">
+                  <div className="font-bold tabular-nums leading-none">{monthStats.longest} <span className="text-xs font-medium text-muted-foreground">hari</span></div>
+                  <div className="text-[11px] text-muted-foreground mt-1">rangkaian terpanjang</div>
+                </div>
+              </div>
             </div>
           </div>
           <div className="mt-4 rounded-2xl bg-[var(--primary-soft)] border border-primary/10 p-4 text-sm leading-6">{insight}</div>
-          <Link href="/mutabaah" className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-primary">
-            Isi hari ini untuk melanjutkan <ArrowRight className="h-3 w-3" />
+          <Link href="/mutabaah" className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-primary rounded-full px-2 py-1 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            Isi hari ini untuk melanjutkan <ArrowRight className="h-3 w-3" aria-hidden="true" />
           </Link>
         </Card>
       </div>
 
-      {/* Calendar */}
+      {/* Calendar — ketuk tanggal untuk melihat rinciannya di bawah */}
       <Card className="rounded-[20px] p-5">
         <div className="flex items-center gap-2">
-          <CalendarDays className="h-4 w-4" />
+          <CalendarDays className="h-4 w-4" aria-hidden="true" />
           <h3 className="font-semibold text-sm">Kalender bulan ini</h3>
-          <span className="ml-auto text-xs text-muted-foreground hidden sm:inline">{new Date().toLocaleDateString("id-ID", { month: "long", year: "numeric" })}</span>
+          <span className="ml-auto text-xs text-muted-foreground hidden sm:inline capitalize">{calMeta.monthLabel}</span>
         </div>
-        <div className="mt-4 grid grid-cols-7 gap-1.5 text-center text-xs">
+        <div className="mt-4 grid grid-cols-7 gap-1.5 text-center text-xs" role="group" aria-label="Pilih tanggal untuk melihat rincian">
           {["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"].map((d) => (
-            <div key={d} className="font-semibold text-muted-foreground py-1 text-[11px]">
+            <div key={d} className="font-semibold text-muted-foreground py-1 text-[11px]" aria-hidden="true">
               {d}
             </div>
           ))}
           {(() => {
-            const nowD = new Date();
-            const firstOffset = (new Date(nowD.getFullYear(), nowD.getMonth(), 1).getDay() + 6) % 7;
-            const todayNum = nowD.getDate();
-            const trailing = (7 - ((firstOffset + monthDays.length) % 7)) % 7;
+            const trailing = (7 - ((calMeta.firstOffset + monthDays.length) % 7)) % 7;
             return (
               <>
-                {Array.from({ length: firstOffset }).map((_, i) => (
+                {Array.from({ length: calMeta.firstOffset }).map((_, i) => (
                   <div key={`kosong-awal-${i}`} aria-hidden="true" />
                 ))}
                 {monthDays.map((d) => {
-                  const isToday = d.day === todayNum;
+                  const isToday = d.day === calMeta.todayNum;
+                  const isFuture = d.day > calMeta.todayNum;
+                  const isSelected = selectedDay === d.day;
                   return (
-                    <div
+                    <button
                       key={d.day}
+                      type="button"
+                      disabled={isFuture}
+                      onClick={() => setSelectedDay(d.day)}
                       title={d.progress !== null ? `${d.progress}% terisi` : "belum ada data"}
                       aria-current={isToday ? "date" : undefined}
-                      className={`h-9 w-full rounded-xl flex items-center justify-center border text-xs transition-colors
-                        ${isToday ? "font-bold ring-2 ring-primary ring-offset-1" : "font-medium"}
-                        ${d.status === "completed" ? "bg-[var(--primary-soft)] border-primary/20 text-primary" : ""}
-                        ${d.status === "partial" ? "bg-amber-50 border-amber-200 text-amber-800" : ""}
-                        ${d.status === "low" ? "bg-white border-zinc-200 text-muted-foreground" : ""}
-                        ${d.status === "none" ? "bg-white text-muted-foreground border-dashed border-zinc-200" : ""}
+                      aria-pressed={isSelected}
+                      aria-label={`${d.day} ${calMeta.monthLabel}${d.progress !== null ? `, ${d.progress} persen terisi` : ", belum ada data"}`}
+                      className={`h-9 w-full rounded-xl flex items-center justify-center border text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40
+                        ${isSelected ? "bg-primary border-primary text-white font-bold" : isToday ? "font-bold ring-2 ring-primary ring-offset-1" : "font-medium"}
+                        ${!isSelected && d.status === "completed" ? "bg-[var(--primary-soft)] border-primary/20 text-primary" : ""}
+                        ${!isSelected && d.status === "partial" ? "bg-amber-50 border-amber-200 text-amber-800" : ""}
+                        ${!isSelected && d.status === "low" ? "bg-white border-zinc-200 text-muted-foreground" : ""}
+                        ${!isSelected && d.status === "none" ? "bg-white text-muted-foreground border-dashed border-zinc-200" : ""}
                       `}
                     >
                       {d.day}
-                    </div>
+                    </button>
                   );
                 })}
                 {Array.from({ length: trailing }).map((_, i) => (
@@ -359,16 +485,111 @@ export default function ProgressPage() {
         </div>
         <div className="mt-4 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-primary" /> Terisi penuh
+            <span className="h-2.5 w-2.5 rounded-full bg-primary" aria-hidden="true" /> Terisi penuh
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-amber-400" /> Sebagian terisi
+            <span className="h-2.5 w-2.5 rounded-full bg-amber-400" aria-hidden="true" /> Sebagian terisi
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-white border border-zinc-300" /> Sedikit / belum ada
+            <span className="h-2.5 w-2.5 rounded-full bg-white border border-zinc-300" aria-hidden="true" /> Sedikit / belum ada
           </span>
         </div>
       </Card>
+
+      {/* Rincian tanggal — bottom sheet, muncul saat tanggal diketuk */}
+      {dayDetail && (
+        <Sheet label={`Rincian mutabaah ${dayDetail.label}`} onClose={() => setSelectedDay(null)}>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-lg capitalize leading-tight">{dayDetail.label}</h3>
+              <p className="text-xs text-muted-foreground mt-1 tabular-nums">
+                {dayDetail.items.some((i) => i.value > 0) ? (
+                  <>
+                    {dayDetail.progress}% terisi
+                    {dayDetail.berjamaah + dayDetail.sendiri > 0 && (
+                      <span className="text-muted-foreground"> · {dayDetail.berjamaah > 0 && `${dayDetail.berjamaah} berjamaah`}{dayDetail.berjamaah > 0 && dayDetail.sendiri > 0 && " · "}{dayDetail.sendiri > 0 && `${dayDetail.sendiri} sendiri`}</span>
+                    )}
+                  </>
+                ) : (
+                  "Belum ada isian."
+                )}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedDay(null)}
+              aria-label="Tutup rincian"
+              className="h-11 w-11 -mr-2 rounded-full flex items-center justify-center hover:bg-muted shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+          <div className="mt-4 space-y-5 max-h-[55dvh] overflow-auto">
+            {dayDetail.strip.some((s) => s.item) && (
+              <div className="grid grid-cols-5 gap-1.5" role="list" aria-label="Sholat lima waktu">
+                {dayDetail.strip.map((s) => {
+                  const it = s.item;
+                  const state = !it ? "missing" : it.status === "done" && it.context === "BERJAMAAH" ? "jamaah" : it.status === "done" ? "sendiri" : it.status === "partial" ? "partial" : "todo";
+                  return (
+                    <div
+                      key={s.key}
+                      role="listitem"
+                      aria-label={`${s.label}${!it ? " — tidak ada target" : it.status === "done" ? (it.context === "BERJAMAAH" ? " — berjamaah di masjid" : " — sholat sendiri") : it.status === "partial" ? " — sebagian" : " — belum diisi"}`}
+                      title={`${s.label}${!it ? " — tidak ada target" : it.status === "done" ? (it.context === "BERJAMAAH" ? " — berjamaah di masjid" : " — sholat sendiri") : ""}`}
+                      className={`rounded-2xl border py-2.5 px-1 text-center transition-colors
+                        ${state === "jamaah" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : ""}
+                        ${state === "sendiri" ? "bg-[var(--primary-soft)] border-primary/20 text-primary" : ""}
+                        ${state === "partial" ? "bg-amber-50 border-amber-200 text-amber-700" : ""}
+                        ${state === "todo" ? "bg-card border-border text-muted-foreground" : ""}
+                        ${state === "missing" ? "bg-transparent border-dashed border-border text-muted-foreground/50" : ""}
+                      `}
+                    >
+                      <span className="flex justify-center" aria-hidden="true">
+                        {state === "jamaah" ? <Users className="h-4 w-4" /> : state === "sendiri" ? <User className="h-4 w-4" /> : state === "partial" ? <span className="h-2 w-2 mt-1 bg-amber-500 rounded-full" /> : state === "todo" ? <span className="h-2 w-2 mt-1 rounded-full border border-current" /> : <span className="h-2 w-2 mt-1">–</span>}
+                      </span>
+                      <span className="block mt-1 text-[10px] font-semibold leading-tight truncate px-0.5">{s.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {dayDetail.groups.map((g) => (
+              <section key={g.category} aria-label={`Kategori ${g.category}`}>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-[11px] font-semibold tracking-widest uppercase text-muted-foreground">{g.category}</h4>
+                  <span className="text-[11px] px-2 py-0.5 rounded-full font-medium tabular-nums bg-muted text-muted-foreground">
+                    {g.items.filter((i) => i.status === "done").length}/{g.items.length}
+                  </span>
+                </div>
+                <ul className="mt-2 space-y-1">
+                  {g.items.map((i) => (
+                    <li key={i.id} className="flex items-center gap-2.5 py-2 border-b border-border/50 last:border-0">
+                      <span
+                        className={`h-2 w-2 rounded-full shrink-0 ${i.status === "done" ? "bg-primary" : i.status === "partial" ? "bg-amber-500" : "bg-zinc-300"}`}
+                        aria-hidden="true"
+                      />
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm truncate">{i.name}</span>
+                        {i.category === "Ibadah Wajib" && i.status === "done" && (
+                          <span
+                            className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border ${i.context === "BERJAMAAH" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-muted text-muted-foreground border-transparent"}`}
+                          >
+                            {i.context === "BERJAMAAH" ? <Users className="h-3 w-3" aria-hidden="true" /> : <User className="h-3 w-3" aria-hidden="true" />}
+                            {i.context === "BERJAMAAH" ? "Berjamaah di masjid" : "Sholat sendiri"}
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                        {i.type === "BOOLEAN" ? (i.status === "done" ? "✓" : "—") : i.unit ? `${i.value}/${i.target} ${i.unit}` : `${i.value}/${i.target}`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </Sheet>
+      )}
     </div>
   );
 }

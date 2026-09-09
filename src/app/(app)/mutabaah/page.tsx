@@ -1,6 +1,7 @@
 "use client";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import type { Entry, HabitCategory } from "@/lib/habits";
 import { HabitCard } from "@/components/app/habit-card";
@@ -309,78 +310,26 @@ export default function MutabaahPage() {
 
   return (
     <div className="mx-auto max-w-[720px] space-y-5">
-      {/* Judul — tanggal sebagai eyebrow, status satu kalimat */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+      {/* Hero ringkas — ring + status + jalan ke Progress dalam satu baris */}
+      <div className="flex items-center gap-4">
+        <ProgressRing value={daily} size={76} stroke={8} track="var(--border)" bar="var(--primary)" />
+        <div className="flex-1 min-w-0">
           <p className="text-xs text-muted-foreground" aria-live="polite">
             {date.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
           </p>
-          <h1 className="text-[26px] font-bold tracking-tight leading-tight mt-1">Mutabaah Hari Ini</h1>
+          <h1 className="text-[26px] font-bold tracking-tight leading-tight mt-0.5">Mutabaah Hari Ini</h1>
           <p className="text-sm text-muted-foreground mt-1 leading-6">
             {daily === 100
               ? "Alhamdulillah, bagian hari ini sudah selesai."
               : completedCount === 0
                 ? "Hari masih baru — mulai dari satu ketukan kecil."
-                : `Sudah ${completedCount} terisi, tinggal ${dbHabits.length - completedCount} lagi.`}
+                : `Sudah ${completedCount} terisi, tinggal ${dbHabits.length - completedCount} lagi.`}{" "}
+            <Link href="/progress" className="font-medium text-primary underline underline-offset-4 rounded-full">
+              Lihat perjalanan →
+            </Link>
           </p>
         </div>
-        <Button
-          variant={showNote ? "secondary" : "ghost"}
-          size="sm"
-          className="rounded-full shrink-0 border mt-1"
-          onClick={() => setShowNote(!showNote)}
-          aria-expanded={showNote}
-        >
-          <StickyNote className="h-4 w-4 mr-1.5" /> Refleksi
-        </Button>
       </div>
-
-      {/* Kemajuan — strip ramping dengan jalan ke Progress */}
-      <div className="rounded-[20px] px-5 py-4 text-white relative overflow-hidden bg-gradient-to-br from-[#1C5B40] via-[#17452F] to-[#102E21]">
-        <div className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/5" aria-hidden="true" />
-        <div className="relative flex items-center gap-4">
-          <ProgressRing value={daily} size={72} stroke={8} track="rgba(255,255,255,0.18)" bar="#E9D9A6" valueClassName="text-white" labelClassName="text-white/60" />
-          <div className="flex-1 min-w-0">
-            <p className="text-[22px] font-bold leading-none text-white tabular-nums">
-              {daily}% <span className="text-xs font-normal text-white/60">· {completedCount}/{dbHabits.length} terisi</span>
-            </p>
-            <a href="/progress" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-white/70 underline underline-offset-4 hover:text-white">
-              Lihat perjalanan mingguan →
-            </a>
-          </div>
-        </div>
-      </div>
-
-      {showNote && (
-        <Card className="rounded-[20px] p-5">
-          <label htmlFor="refleksi" className="text-sm font-medium">Refleksi singkat hari ini</label>
-          <textarea
-            id="refleksi"
-            value={noteText}
-            onChange={(e) => {
-              setNoteText(e.target.value);
-              setNoteSaved(false);
-            }}
-            onBlur={() => {
-              if (noteText.trim() !== noteLoaded.trim()) void saveNote(noteText);
-            }}
-            placeholder="Apa yang paling berkesan hari ini? Cukup satu kalimat…"
-            className="mt-2 w-full min-h-[72px] rounded-xl border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-          <div className="mt-3 flex items-center gap-2">
-            <Button
-              size="sm"
-              className="rounded-full"
-              disabled={noteSaving || !userId || noteText.trim() === noteLoaded.trim()}
-              onClick={() => void saveNote(noteText)}
-            >
-              {noteSaving ? "Menyimpan…" : noteSaved && noteText.trim() ? "Tersimpan ✓" : "Simpan refleksi"}
-            </Button>
-            {!userId && <span className="text-xs text-muted-foreground">Masuk untuk menyimpan.</span>}
-          </div>
-          <p className="text-xs text-muted-foreground mt-2">Hanya untukmu — catatan ini privat dan tidak dibagikan ke siapa pun.</p>
-        </Card>
-      )}
 
       {/* Saring berdasarkan kategori — menempel saat menggulir */}
       <div className="sticky top-14 z-20 -mx-4 px-4 lg:mx-0 lg:px-0 py-2 bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/70">
@@ -392,7 +341,7 @@ export default function MutabaahPage() {
                 key={c}
                 onClick={() => setFilter(c)}
                 aria-pressed={active}
-                className={`shrink-0 rounded-full px-4 py-2 min-h-[36px] text-xs font-medium border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? "bg-primary text-white border-primary shadow-sm" : "bg-card hover:bg-muted"}`}
+                className={`shrink-0 rounded-full px-4 py-2 min-h-[44px] text-xs font-medium border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? "bg-primary text-white border-primary shadow-sm" : "bg-card hover:bg-muted"}`}
               >
                 {c}
               </button>
@@ -447,6 +396,60 @@ export default function MutabaahPage() {
       ) : (
         <p className="text-center text-xs text-muted-foreground">{userId ? "Perubahan tersimpan otomatis." : "Masuk untuk menyimpan catatanmu dengan aman."}</p>
       )}
+
+      {/* Refleksi — aktivitas penutup hari, di bawah daftar */}
+      <section aria-label="Refleksi hari ini">
+        {!showNote ? (
+          <button
+            type="button"
+            onClick={() => setShowNote(true)}
+            aria-expanded={false}
+            className="w-full flex items-center gap-3 rounded-[20px] border border-dashed bg-card p-4 text-left transition-colors hover:border-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[44px]"
+          >
+            <span className="h-10 w-10 rounded-xl bg-[var(--primary-soft)] flex items-center justify-center shrink-0" aria-hidden="true">
+              <StickyNote className="h-4 w-4 text-primary" />
+            </span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm font-medium">Tulis refleksi hari ini</span>
+              <span className="block text-xs text-muted-foreground mt-0.5">Satu kalimat cukup — privat, hanya untukmu.</span>
+            </span>
+          </button>
+        ) : (
+          <Card className="rounded-[20px] p-5">
+            <label htmlFor="refleksi" className="text-sm font-medium">Refleksi singkat hari ini</label>
+            <textarea
+              id="refleksi"
+              value={noteText}
+              onChange={(e) => {
+                setNoteText(e.target.value);
+                setNoteSaved(false);
+              }}
+              onBlur={() => {
+                if (noteText.trim() !== noteLoaded.trim()) void saveNote(noteText);
+              }}
+              placeholder="Apa yang paling berkesan hari ini? Cukup satu kalimat…"
+              className="mt-2 w-full min-h-[72px] rounded-xl border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <div className="mt-3 flex items-center gap-2">
+              <Button
+                size="sm"
+                className="rounded-full"
+                disabled={noteSaving || !userId || noteText.trim() === noteLoaded.trim()}
+                onClick={() => void saveNote(noteText)}
+              >
+                {noteSaving ? "Menyimpan…" : noteSaved && noteText.trim() ? "Tersimpan ✓" : "Simpan refleksi"}
+              </Button>
+              <button
+                type="button"
+                onClick={() => setShowNote(false)}
+                className="text-xs font-medium text-muted-foreground rounded-full px-3 py-2 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Tutup
+              </button>
+            </div>
+          </Card>
+        )}
+      </section>
     </div>
   );
 }
