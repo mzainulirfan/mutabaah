@@ -30,6 +30,8 @@ export default function BerandaPage() {
   const [role, setRole] = useState<string>("OWNER");
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState("Ayah");
+  const [selfDelta, setSelfDelta] = useState<number | null>(null);
+  const [selfActive, setSelfActive] = useState(0);
   const [members, setMembers] = useState<{ id: string; name: string; progress: number; streak: number; role: string }[]>([]);
   const [familyProgress, setFamilyProgress] = useState(0);
   const [delta, setDelta] = useState<number | null>(null);
@@ -100,6 +102,7 @@ export default function BerandaPage() {
       const last30Map = new Map(((last30 ?? []) as EntryRow[]).map((e) => [`${e.user_id}|${e.date}|${e.habit_id}`, e]));
       const memberStats: typeof members = [];
       let familySum = 0; let familySumYesterday = 0;
+      let myDelta: number | null = null; let myActive = 0;
       for (const m of familyMembers ?? []) {
         const name = profileMap.get(m.user_id) ?? m.user_id.slice(0, 6);
         const items = (habits ?? []).map((h) => {
@@ -119,6 +122,10 @@ export default function BerandaPage() {
           return dailyProgress(itemsD);
         });
         let streak = 0; for (let i = dailyVals.length - 1; i >= 0; i--) { if (isStreakDay(dailyVals[i])) streak++; else break; }
+        if (m.user_id === user.id) {
+          myDelta = prog - progY;
+          myActive = dailyVals.slice(-7).filter((v) => v > 0).length;
+        }
         memberStats.push({ id: m.user_id, name, progress: prog, streak, role: m.role });
       }
       const fp = memberStats.length ? Math.round(familySum / memberStats.length) : 0;
@@ -126,6 +133,8 @@ export default function BerandaPage() {
       setMembers(memberStats);
       setFamilyProgress(fp);
       setDelta(memberStats.length ? fp - fpY : null);
+      setSelfDelta(myDelta);
+      setSelfActive(myActive);
       const weekDays: { day: string; value: number }[] = [];
       const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
       for (let i = 6; i >= 0; i--) {
@@ -208,6 +217,8 @@ export default function BerandaPage() {
   const self = members.find((m) => userId != null && m.id === userId) ?? members.find((m) => m.name === userName) ?? members[0];
   const heroValue = isMemberOnly ? self.progress : familyProgress;
   const heroStreak = isMemberOnly ? self.streak : Math.max(...members.map((m) => m.streak), 0);
+  const deltaView = isMemberOnly ? selfDelta : delta;
+  const activeView = isMemberOnly ? selfActive : activeDays;
 
   const remainingMine = myHabits.filter((h) => (myEntries[h.id]?.status ?? "PENDING") !== "COMPLETED").length;
 
@@ -323,16 +334,16 @@ export default function BerandaPage() {
             <p className="text-xs font-semibold tracking-widest uppercase text-white/60">{isMemberOnly ? "Perjalananmu hari ini" : "Perjalanan keluarga hari ini"}</p>
             <div className="flex items-center gap-2 mt-1.5">
               <span className="text-[30px] font-bold leading-none text-white tabular-nums">{heroValue}%</span>
-              {delta !== null && delta !== 0 && (
-                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${delta > 0 ? "bg-white/15 text-white" : "bg-black/20 text-white/70"}`}>
-                  {delta > 0 ? <TrendingUp className="h-3 w-3" aria-hidden="true" /> : <TrendingDown className="h-3 w-3" aria-hidden="true" />} {delta > 0 ? "+" : ""}{delta}%
+              {deltaView !== null && deltaView !== 0 && (
+                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${deltaView > 0 ? "bg-white/15 text-white" : "bg-black/20 text-white/70"}`}>
+                  {deltaView > 0 ? <TrendingUp className="h-3 w-3" aria-hidden="true" /> : <TrendingDown className="h-3 w-3" aria-hidden="true" />} {deltaView > 0 ? "+" : ""}{deltaView}%
                 </span>
               )}
             </div>
             <p className="text-xs text-white/70 mt-1.5 leading-5">
-              {delta !== null && delta > 0
+              {deltaView !== null && deltaView > 0
                 ? "Naik dari kemarin, alhamdulillah."
-                : delta !== null && delta < 0
+                : deltaView !== null && deltaView < 0
                   ? "Sedikit di bawah kemarin — hari ini kesempatan baru."
                   : isMemberOnly
                     ? "Dibandingkan dengan dirimu kemarin."
@@ -343,7 +354,7 @@ export default function BerandaPage() {
         <dl className="relative mt-5 pt-4 border-t border-white/10 grid grid-cols-3 gap-2 text-center">
           <div>
             <dt className="text-[11px] text-white/60">Hari terisi</dt>
-            <dd className="font-bold text-white mt-0.5 tabular-nums">{activeDays}/7</dd>
+            <dd className="font-bold text-white mt-0.5 tabular-nums">{activeView}/7</dd>
           </div>
           <div className="border-x border-white/10">
             {showStreak ? (
@@ -376,14 +387,17 @@ export default function BerandaPage() {
         </dl>
       </div>
 
+      {/* Anggota & kabar — hanya untuk orang tua; anak hanya melihat miliknya sendiri */}
+      {!isMemberOnly && (
+        <>
       {/* Anggota — daftar ringkas dalam satu kartu */}
       <section aria-label="Anggota keluarga">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold flex items-center gap-2 text-sm">
             <Users className="h-4 w-4" /> Anggota keluarga
           </h2>
-          <Link href={isMemberOnly ? "/progress" : "/profil"} className="text-xs font-medium text-primary inline-flex items-center gap-1 rounded-full px-2 py-1 hover:bg-muted" aria-label={isMemberOnly ? "Lihat perjalananku" : "Kelola keluarga"}>
-            {isMemberOnly ? "Perjalananku" : `Kelola (${members.length})`} <ChevronRight className="h-3.5 w-3.5" />
+          <Link href="/profil" className="text-xs font-medium text-primary inline-flex items-center gap-1 rounded-full px-2 py-1 hover:bg-muted" aria-label="Kelola keluarga">
+            Kelola ({members.length}) <ChevronRight className="h-3.5 w-3.5" />
           </Link>
         </div>
         <Card className="rounded-[20px] p-2">
@@ -393,8 +407,8 @@ export default function BerandaPage() {
               return (
                 <li key={m.id}>
                   <Link
-                    href="/mutabaah"
-                    aria-label={`Lihat mutabaah ${m.name}, ${m.progress} persen terisi`}
+                    href={`/keluarga/anggota/${m.id}`}
+                    aria-label={`Lihat progres ${m.name}, ${m.progress} persen terisi`}
                     className="flex items-center gap-3 p-3 rounded-2xl hover:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <span className="h-10 w-10 rounded-xl bg-[var(--primary-soft)] flex items-center justify-center font-bold text-primary text-sm shrink-0" aria-hidden="true">
@@ -418,8 +432,8 @@ export default function BerandaPage() {
         </Card>
       </section>
 
-      {/* Minggu ini + kabar — reflektif, bukan kompetitif */}
-      <div className="grid lg:grid-cols-3 gap-6 min-w-0">
+          {/* Minggu ini + kabar — reflektif, bukan kompetitif */}
+          <div className="grid lg:grid-cols-3 gap-6 min-w-0">
         <Card className="rounded-[20px] p-5 lg:col-span-2 min-w-0">
           <div className="flex items-center justify-between gap-2">
             <div>
@@ -510,7 +524,26 @@ export default function BerandaPage() {
             )}
           </div>
         </Card>
-      </div>
+          </div>
+        </>
+      )}
+
+      {isMemberOnly && (
+        <Card className="rounded-[20px] p-5">
+          <h2 className="font-semibold text-sm">Hari ini, satu langkah</h2>
+          <p className="text-xs text-muted-foreground mt-1 leading-5">
+            {remainingMine === 0 ? "Alhamdulillah, semua sudah terisi. Semoga istiqamah." : `Tinggal ${remainingMine} target lagi — mulai dari yang terdekat.`}
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <Link href="/mutabaah" className="flex items-center justify-center gap-1 rounded-full bg-primary text-white text-sm font-medium px-4 py-3 min-h-[44px]">
+              Isi mutabaah
+            </Link>
+            <Link href="/progress" className="flex items-center justify-center gap-1 rounded-full border bg-card text-sm font-medium px-4 py-3 min-h-[44px] hover:bg-muted">
+              Perjalananku
+            </Link>
+          </div>
+        </Card>
+      )}
 
       <button onClick={() => setSheetOpen(true)} className="lg:hidden fixed bottom-[88px] right-4 z-20 rounded-full bg-primary text-white shadow-lg px-5 py-3 flex items-center gap-2 font-medium active:scale-95 transition-transform" aria-label="Isi mutabaah hari ini" aria-haspopup="dialog">
         <Sparkles className="h-4 w-4" /> Isi Hari Ini

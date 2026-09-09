@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Link2, Trash2, Copy, Check, Loader2, ChevronLeft, X } from "lucide-react";
+import { Link2, Trash2, Copy, Check, Loader2, ChevronLeft, ChevronRight, X } from "lucide-react";
 import Link from "next/link";
 import { Sheet } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";
@@ -118,12 +118,19 @@ export default function AnggotaPage() {
       <Card className="rounded-[20px] p-2">
         <ul className="divide-y divide-border/60">
           {members.map((p) => (
-            <li key={p.id} className="flex items-center gap-3 p-3.5">
-              <div className="h-11 w-11 rounded-2xl bg-[var(--primary-soft)] flex items-center justify-center font-bold text-primary shrink-0">{p.name[0]?.toUpperCase()}</div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold truncate">{p.name}</div>
-                <div className="text-xs text-muted-foreground mt-1">{roleLabel[p.role] ?? "Anggota"}</div>
-              </div>
+            <li key={p.id} className="flex items-center gap-1 p-1.5">
+              <Link
+                href={`/keluarga/anggota/${p.id}`}
+                aria-label={`Lihat progres ${p.name}`}
+                className="flex-1 min-w-0 flex items-center gap-3 rounded-2xl p-2 hover:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <div className="h-11 w-11 rounded-2xl bg-[var(--primary-soft)] flex items-center justify-center font-bold text-primary shrink-0" aria-hidden="true">{p.name[0]?.toUpperCase()}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold truncate">{p.name}</div>
+                  <div className="text-xs text-muted-foreground mt-1">{roleLabel[p.role] ?? "Anggota"}</div>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
+              </Link>
               {p.role !== "OWNER" && (
                 <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0" onClick={() => handleRemoveMember(p.id, p.name)} aria-label={`Keluarkan ${p.name} dari keluarga`}>
                   <Trash2 className="h-4 w-4" />
