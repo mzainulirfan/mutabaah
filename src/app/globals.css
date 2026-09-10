@@ -67,6 +67,14 @@ body {
   animation: sheet-up 0.22s ease-out;
 }
 
+@keyframes toast-in {
+  from { transform: translateY(-12px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.animate-toast-in {
+  animation: toast-in 0.22s ease-out;
+}
+
 /* Notion-like soft shadow */
 .shadow-soft {
   box-shadow:
