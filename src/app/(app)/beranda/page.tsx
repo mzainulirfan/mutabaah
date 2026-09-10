@@ -54,26 +54,9 @@ export default function BerandaPage() {
     return () => clearTimeout(t);
   }, []);
 
-  // Slideshow refleksi sekeluarga — acak, berganti tiap 5 menit bila lebih dari 1,
-  // kocok ulang tiap putaran penuh; hormati preferensi reduced motion.
-  useEffect(() => {
-    if (slide.list.length < 2) return;
-    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    const t = setInterval(() => {
-      setSlide((s) => {
-        if (s.list.length < 2) return s;
-        const next = (s.idx + 1) % s.list.length;
-        if (next !== 0) return { list: s.list, idx: next };
-        const arr = [...s.list];
-        for (let i = arr.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [arr[i], arr[j]] = [arr[j], arr[i]];
-        }
-        return { list: arr, idx: 0 };
-      });
-    }, 300000);
-    return () => clearInterval(t);
-  }, [slide.list.length]);
+  // Urutan slideshow dikocok setiap halaman dimuat (lihat setSlide saat fetch);
+  // tanpa rotasi otomatis — pengguna pindah manual lewat titik navigasi.
+
 
   useEffect(() => {
     // setState hanya di dalam kelanjutan async (pola fetch-on-mount yang diizinkan),
