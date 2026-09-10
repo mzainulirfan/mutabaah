@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ProgressRing } from "@/components/app/progress-ring";
-import { Flame, ChevronRight, CheckCircle2, Users, Sparkles, TrendingUp, TrendingDown, Bell, X, ArrowRight, Quote } from "lucide-react";
+import { Flame, ChevronRight, CheckCircle2, Users, Sparkles, TrendingUp, TrendingDown, Bell, X, ArrowRight, Quote } from "@/components/ui/hugeicons";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { HabitCard } from "@/components/app/habit-card";

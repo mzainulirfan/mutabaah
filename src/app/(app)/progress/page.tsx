@@ -362,7 +362,6 @@ export default function ProgressPage() {
             ? `Perjalanan ${viewMembers.find((m) => m.id === viewUserId)?.name ?? "anggota"}`
             : "Perjalananmu"}
         </h1>
-        <p className="text-sm text-muted-foreground mt-1 leading-6">Dibandingkan dengan diri kemarin — bukan dengan orang lain.</p>
         {viewerRole !== "MEMBER" && viewMembers.length > 1 && (
           <div className="mt-3 flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Pilih anggota yang dilihat">
             {[{ id: myId ?? "", name: "Saya" }, ...viewMembers.filter((m) => m.id !== myId)].map((m) => {
@@ -402,15 +401,15 @@ export default function ProgressPage() {
             </p>
           </div>
         </div>
-        <p className="relative text-sm text-white/85 leading-6 mt-4">
-          {avgWeekly >= 85
-            ? "MasyaAllah, pekan yang terjaga. Pertahankan ritmemu."
-            : avgWeekly >= 70
-              ? "Alhamdulillah, ritmemu stabil minggu ini."
-              : avgWeekly >= 40
-                ? "Pelan-pelan — setiap isian hari ini berarti."
-                : "Belum banyak terisi pekan ini, tidak apa-apa. Mulai dari satu ketukan hari ini."}
-        </p>
+        {avgWeekly >= 40 && (
+          <p className="relative text-sm text-white/85 leading-6 mt-4">
+            {avgWeekly >= 85
+              ? "MasyaAllah, pekan yang terjaga. Pertahankan ritmemu."
+              : avgWeekly >= 70
+                ? "Alhamdulillah, ritmemu stabil minggu ini."
+                : "Pelan-pelan — setiap isian hari ini berarti."}
+          </p>
+        )}
         <div className="relative mt-5 flex items-end justify-between gap-1.5" role="img" aria-label={`Grafik mingguan, rata-rata ${avgWeekly} persen`}>
           {weekly.map((d, i) => {
             const isBest = d.value === bestDay.value && d.value > 0;
@@ -427,13 +426,9 @@ export default function ProgressPage() {
             );
           })}
         </div>
-        <dl className="relative mt-5 pt-4 border-t border-white/10 grid grid-cols-3 gap-2 text-center">
+        <dl className="relative mt-5 pt-4 border-t border-white/10 grid grid-cols-2 gap-2 text-center">
           <div>
-            <dt className="text-[11px] text-white/60">Hari terbaik</dt>
-            <dd className="font-bold text-white mt-0.5 tabular-nums">{bestDay.day} · {bestDay.value}%</dd>
-          </div>
-          <div className="border-x border-white/10">
-            <dt className="text-[11px] text-white/60">Hari terisi</dt>
+            <dt className="text-[11px] text-white/60">Hari terisi (≥1 amalan)</dt>
             <dd className="font-bold text-white mt-0.5 tabular-nums">{activeDays}/7</dd>
           </div>
           <div>
@@ -446,7 +441,7 @@ export default function ProgressPage() {
               </>
             ) : (
               <>
-                <dt className="text-[11px] text-white/60">Hari penuh</dt>
+                <dt className="text-[11px] text-white/60">Hari sempurna (100%)</dt>
                 <dd className="font-bold text-white mt-0.5 tabular-nums">{monthStats.perfect}</dd>
               </>
             )}
@@ -555,10 +550,9 @@ export default function ProgressPage() {
                 <span className="h-9 w-9 rounded-xl bg-amber-50 flex items-center justify-center shrink-0" aria-hidden="true">
                   <Trophy className="h-4 w-4 text-amber-600" />
                 </span>
-                <div className="min-w-0">
-                  <div className="font-bold tabular-nums leading-none">{monthStats.perfect} <span className="text-xs font-medium text-muted-foreground">hari penuh</span></div>
-                  <div className="text-[11px] text-muted-foreground mt-1">terisi 100%</div>
-                </div>
+              <div className="min-w-0">
+                <div className="font-bold tabular-nums leading-none">{monthStats.perfect} <span className="text-xs font-medium text-muted-foreground">hari sempurna (100%)</span></div>
+              </div>
               </div>
               <div className="flex items-center gap-2.5">
                 <span className="h-9 w-9 rounded-xl bg-[var(--primary-soft)] flex items-center justify-center shrink-0" aria-hidden="true">
@@ -582,8 +576,7 @@ export default function ProgressPage() {
       <Card className="rounded-[20px] p-5">
         <div className="flex items-center gap-2">
           <CalendarDays className="h-4 w-4" aria-hidden="true" />
-          <h3 className="font-semibold text-sm">Kalender bulan ini</h3>
-          <span className="ml-auto text-xs text-muted-foreground hidden sm:inline capitalize">{calMeta.monthLabel}</span>
+          <h3 className="font-semibold text-sm capitalize">Kalender · {calMeta.monthShort}</h3>
         </div>
         <div className="mt-4 grid grid-cols-7 gap-1.5 text-center text-xs" role="group" aria-label="Pilih tanggal untuk melihat rincian">
           {["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"].map((d) => (

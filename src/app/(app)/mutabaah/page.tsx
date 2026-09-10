@@ -8,7 +8,7 @@ import { HabitCard } from "@/components/app/habit-card";
 import { ProgressRing } from "@/components/app/progress-ring";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { StickyNote, WifiOff, Sparkles } from "lucide-react";
+import { StickyNote, WifiOff, Sparkles } from "@/components/ui/hugeicons";
 import { enqueue, syncQueue, clearInvalidQueue } from "@/lib/offline-queue";
 import { localDateKey } from "@/lib/local-date";
 import type { EntryRow } from "@/lib/supabase/types";

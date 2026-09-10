@@ -2,23 +2,38 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, ClipboardCheck, BarChart3, User, LogOut, Sparkles } from "lucide-react";
+import { LogOut, Sparkles } from "lucide-react";
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
+import { Home04Icon, CheckListIcon, BarChartIcon, UserIcon } from "@hugeicons/core-free-icons";
+import type { SVGProps } from "react";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getFamilyContext, getSessionUser } from "@/lib/family-context";
 
+// Ikon nav Hugeicons yang kompatibel dengan pemakaian nav (className + strokeWidth).
+function makeNavIcon(icon: IconSvgElement) {
+  return function NavIcon({ strokeWidth = 1.8, ...rest }: SVGProps<SVGSVGElement> & { strokeWidth?: number | string }) {
+    return <HugeiconsIcon icon={icon} size={24} strokeWidth={Number(strokeWidth) || 1.8} {...rest} />;
+  };
+}
+
+const HomeNavIcon = makeNavIcon(Home04Icon);
+const MutabaahNavIcon = makeNavIcon(CheckListIcon);
+const ProgressNavIcon = makeNavIcon(BarChartIcon);
+const ProfilNavIcon = makeNavIcon(UserIcon);
+
 const parentNav = [
-  { href: "/beranda", label: "Beranda", icon: LayoutDashboard },
-  { href: "/mutabaah", label: "Mutabaah", icon: ClipboardCheck },
-  { href: "/progress", label: "Progress", icon: BarChart3 },
-  { href: "/profil", label: "Profil", icon: User },
+  { href: "/beranda", label: "Beranda", icon: HomeNavIcon },
+  { href: "/mutabaah", label: "Mutabaah", icon: MutabaahNavIcon },
+  { href: "/progress", label: "Progress", icon: ProgressNavIcon },
+  { href: "/profil", label: "Profil", icon: ProfilNavIcon },
 ];
 
 const memberNav = [
-  { href: "/beranda", label: "Hari Ini", icon: LayoutDashboard },
-  { href: "/mutabaah", label: "Mutabaah", icon: ClipboardCheck },
-  { href: "/progress", label: "Progress", icon: BarChart3 },
-  { href: "/profil", label: "Profil", icon: User },
+  { href: "/beranda", label: "Hari Ini", icon: HomeNavIcon },
+  { href: "/mutabaah", label: "Mutabaah", icon: MutabaahNavIcon },
+  { href: "/progress", label: "Progress", icon: ProgressNavIcon },
+  { href: "/profil", label: "Profil", icon: ProfilNavIcon },
 ];
 
 const pageTitles: Record<string, string> = {

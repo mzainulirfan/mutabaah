@@ -1,6 +1,6 @@
 "use client";
 import { cn } from "@/lib/utils";
-import { Check, Minus, Plus, User, Users } from "lucide-react";
+import { Check, Minus, Plus, User, Users } from "@/components/ui/hugeicons";
 import type { Habit, Entry } from "@/lib/habits";
 import { entryProgress } from "@/lib/progress";
 
