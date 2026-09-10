@@ -29,10 +29,3 @@ export type Entry = {
   note?: string;
   context?: SholatContext | null;
 };
-
-export function getHabitProgress(habit: Habit, entry: Entry | undefined): number {
-  if (!entry || entry.status === "PENDING") return 0;
-  if (entry.status === "COMPLETED") return 100;
-  if (habit.type === "BOOLEAN") return entry.value ? 100 : 0;
-  return Math.round(Math.min(100, (entry.value / habit.target) * 100));
-}

@@ -5,9 +5,21 @@ export function habitProgress(type: string, value: number, target: number): numb
   return Math.round(Math.min(100, (value / target) * 100));
 }
 
-export function dailyProgress(items: { type: string; target: number; value: number }[]): number {
+// Satu-satunya penilai per-amalan yang sadar status. Tanpa entri / PENDING → 0,
+// COMPLETED → 100, sisanya ikut angka. SKIPPED tetap dihitung seperti sekarang
+// (tidak dikeluarkan dari rata-rata) — mengubahnya butuh keputusan produk.
+export function entryProgress(type: string, value: number, target: number, status?: string): number {
+  if (!status || status === "PENDING") return 0;
+  if (status === "COMPLETED") return 100;
+  return habitProgress(type, value, target);
+}
+
+export function dailyProgress(items: { type: string; target: number; value: number; status?: string }[]): number {
   if (items.length === 0) return 0;
-  const sum = items.reduce((a, i) => a + habitProgress(i.type, i.value, i.target), 0);
+  const sum = items.reduce(
+    (a, i) => a + (i.status === undefined ? habitProgress(i.type, i.value, i.target) : entryProgress(i.type, i.value, i.target, i.status)),
+    0
+  );
   return Math.round(sum / items.length);
 }
 

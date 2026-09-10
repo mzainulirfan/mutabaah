@@ -12,6 +12,7 @@ import { StickyNote, WifiOff, Sparkles } from "lucide-react";
 import { enqueue, syncQueue, clearInvalidQueue } from "@/lib/offline-queue";
 import { localDateKey } from "@/lib/local-date";
 import type { EntryRow } from "@/lib/supabase/types";
+import { dailyProgress } from "@/lib/progress";
 import { getErrorMessage } from "@/lib/utils";
 import { getFamilyContext, getSessionUser } from "@/lib/family-context";
 
@@ -141,14 +142,12 @@ export default function MutabaahPage() {
 
   const daily = useMemo(() => {
     if (!dbHabits || dbHabits.length === 0) return 0;
-    const progresses = dbHabits.map((h) => {
-      const e = entries[h.id];
-      if (!e || e.status === "PENDING") return 0;
-      if (e.status === "COMPLETED") return 100;
-      if (h.type === "BOOLEAN") return e.value ? 100 : 0;
-      return Math.round(Math.min(100, (e.value / h.target_value) * 100));
-    });
-    return Math.round(progresses.reduce((a, b) => a + b, 0) / progresses.length);
+    return dailyProgress(
+      dbHabits.map((h) => {
+        const e = entries[h.id];
+        return { type: h.type, target: h.target_value, value: e ? Number(e.value) : 0, status: e?.status };
+      })
+    );
   }, [dbHabits, entries]);
 
   const completedCount = useMemo(() => Object.values(entries).filter((e) => e.status === "COMPLETED").length, [entries]);

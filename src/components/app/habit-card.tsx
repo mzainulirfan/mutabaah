@@ -2,7 +2,7 @@
 import { cn } from "@/lib/utils";
 import { Check, Minus, Plus, User, Users } from "lucide-react";
 import type { Habit, Entry } from "@/lib/habits";
-import { getHabitProgress } from "@/lib/habits";
+import { entryProgress } from "@/lib/progress";
 
 export function HabitCard({
   habit,
@@ -17,7 +17,7 @@ export function HabitCard({
   onUpdateValue: (delta: number) => void;
   onPickContext?: (ctx: "SENDIRI" | "BERJAMAAH") => void;
 }) {
-  const progress = getHabitProgress(habit, entry);
+  const progress = entryProgress(habit.type, entry?.value ?? 0, habit.target, entry?.status);
   const isCompleted = progress === 100;
   const isPartial = progress > 0 && progress < 100;
   const showCounter = habit.type !== "BOOLEAN";

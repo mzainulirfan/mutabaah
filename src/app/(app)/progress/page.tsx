@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { ProgressRing } from "@/components/app/progress-ring";
-import { Flame, Trophy, CalendarDays, TrendingUp, ArrowRight, Check, X, Users, User } from "lucide-react";
+import { Flame, Trophy, CalendarDays, TrendingUp, ArrowRight, Check, X, Users, User, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { Sheet } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";
@@ -38,6 +38,9 @@ export default function ProgressPage() {
   const [myId, setMyId] = useState<string | null>(null);
   const [viewerRole, setViewerRole] = useState("MEMBER");
   const [viewMembers, setViewMembers] = useState<{ id: string; name: string }[]>([]);
+  // Filter bulan: 0 = berjalan, mundur s.d. -11. Mengendalikan rincian, kalender, sheet.
+  const [monthOffset, setMonthOffset] = useState(0);
+  const [monthLoading, setMonthLoading] = useState(false);
 
   // localStorage hanya ada di browser — baca di dalam callback effect agar
   // prerender server tetap aman dan tidak ada setState sinkron di badan effect.
@@ -57,31 +60,44 @@ export default function ProgressPage() {
     return `${fmt(start)} — ${fmt(end)}`;
   });
 
-  // Meta kalender dihitung sekali per render dari tanggal lokal (di dalam callback
-  // agar aman dari aturan purity) — dipakai grid tanggal dan kartu rincian.
+  // Meta kalender mengikuti bulan terfilter (di dalam callback agar aman purity).
   const calMeta = useMemo(() => {
     const nowD = new Date();
-    const year = nowD.getFullYear();
-    const month = nowD.getMonth();
+    const target = new Date(nowD.getFullYear(), nowD.getMonth() + monthOffset, 1);
+    const year = target.getFullYear();
+    const month = target.getMonth();
+    const isCurrent = monthOffset === 0;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const pad = (n: number) => String(n).padStart(2, "0");
     return {
       year,
       month,
+      isCurrent,
+      daysInMonth,
+      anchorDay: isCurrent ? nowD.getDate() : daysInMonth,
       todayNum: nowD.getDate(),
       firstOffset: (new Date(year, month, 1).getDay() + 6) % 7,
-      monthLabel: nowD.toLocaleDateString("id-ID", { month: "long", year: "numeric" }),
-      monthShort: nowD.toLocaleDateString("id-ID", { month: "long" }),
-      iso: (day: number) => `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+      monthLabel: target.toLocaleDateString("id-ID", { month: "long", year: "numeric" }),
+      monthShort: target.toLocaleDateString("id-ID", { month: "long" }),
+      iso: (day: number) => `${year}-${pad(month + 1)}-${pad(day)}`,
       label: (day: number) =>
         new Date(year, month, day).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" }),
     };
-  }, []);
+  }, [monthOffset]);
+
+  const goMonth = (delta: number) => {
+    setMonthOffset((v) => Math.max(-11, Math.min(0, v + delta)));
+    setSelectedDay(null);
+    setFocusHabitId(null);
+  };
 
   // Deret 30 hari per amalan — dipakai mini-grafik 7 hari dan sheet detail.
   const spark = useMemo(() => {
+    // Jangkar = hari terakhir periode yang dilihat (hari ini, atau akhir bulan lampau).
+    const anchor = new Date(calMeta.year, calMeta.month, calMeta.anchorDay);
     const days: string[] = [];
-    const now = new Date();
     for (let i = 29; i >= 0; i--) {
-      const d = new Date(now);
+      const d = new Date(anchor);
       d.setDate(d.getDate() - i);
       days.push(localDateKey(d));
     }
@@ -96,36 +112,18 @@ export default function ProgressPage() {
       });
     }
     return map;
-  }, [habits, dayEntries]);
+  }, [habits, dayEntries, calMeta]);
 
   // Amalan yang sedang dilihat detailnya (sheet) — null berarti tertutup.
+  // Selalu mode bulan terfilter (calMeta), tanpa opsi 7/30 hari.
   const [focusHabitId, setFocusHabitId] = useState<string | null>(null);
-  const [focusRange, setFocusRange] = useState<"7" | "month" | "30">("month");
   const focusDetail = useMemo(() => {
     if (!focusHabitId) return null;
     const h = habits.find((x) => x.id === focusHabitId);
     if (!h) return null;
-    const now = new Date();
     const days: { iso: string; dayNum: number }[] = [];
-    if (focusRange === "7") {
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        days.push({ iso: localDateKey(d), dayNum: d.getDate() });
-      }
-    } else if (focusRange === "30") {
-      for (let i = 29; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        days.push({ iso: localDateKey(d), dayNum: d.getDate() });
-      }
-    } else {
-      for (let d = 1; d <= now.getDate(); d++) {
-        days.push({
-          iso: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`,
-          dayNum: d,
-        });
-      }
+    for (let d = 1; d <= calMeta.anchorDay; d++) {
+      days.push({ iso: calMeta.iso(d), dayNum: d });
     }
     const target = Number(h.target_value) || 1;
     const series = days.map(({ iso }) => {
@@ -150,9 +148,9 @@ export default function ProgressPage() {
     });
     const berjamaah = contexts.filter((c) => c === "BERJAMAAH").length;
     const sendiri = contexts.filter((c) => c === "SENDIRI").length;
-    const rangeLabel = focusRange === "7" ? "7 hari terakhir" : focusRange === "30" ? "30 hari terakhir" : "bulan ini";
+    const rangeLabel = calMeta.isCurrent ? "bulan ini" : calMeta.monthShort.toLowerCase();
     return { habit: h, series, dates: days.map((d) => d.dayNum), avg, activeDays, longest, total: days.length, isWajib, contexts, berjamaah, sendiri, rangeLabel };
-  }, [focusHabitId, habits, dayEntries, focusRange]);
+  }, [focusHabitId, habits, dayEntries, calMeta]);
 
   // Rincian mutabaah tanggal yang diketuk — null berarti sheet tertutup.
   const dayDetail = useMemo(() => {
@@ -232,64 +230,87 @@ export default function ProgressPage() {
         viewUserId && canViewAll && family.members.some((m) => m.user_id === viewUserId) ? viewUserId : user.id;
       const hRows: HabitRow[] = family.habits;
       setHabits(hRows);
-      const nowForRange = new Date();
-      const thirtyAgo = localDateKey(daysAgoLocal(29, nowForRange));
-      const monthStartISO = `${nowForRange.getFullYear()}-${String(nowForRange.getMonth() + 1).padStart(2, "0")}-01`;
-      const rangeStart = monthStartISO < thirtyAgo ? monthStartISO : thirtyAgo;
-      const { data: entries } = await supabase.from("mutabaah_entries").select("habit_id,value,status,date,context,note").eq("family_id", family.familyId).eq("user_id", targetId).gte("date", rangeStart);
-      const entryRows = (entries ?? []) as EntryRow[];
-      setDayEntries(entryRows);
-      const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
-      const weekVals: { day: string; value: number }[] = [];
-      for (let i = 6; i >= 0; i--) {
-        const d = daysAgoLocal(i, nowForRange);
-        const iso = localDateKey(d);
-        const items = hRows.map((h) => { const e = entryRows.find((x) => x.date === iso && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
-        weekVals.push({ day: dayNames[d.getDay()], value: dailyProgress(items) });
-      }
-      setWeekly(weekVals);
-      setAvgWeekly(weekVals.length ? Math.round(weekVals.reduce((a, b) => a + b.value, 0) / weekVals.length) : 0);
-      setActiveDays(weekVals.filter((w) => w.value > 0).length);
-      setBestDay(weekVals.reduce((best, cur) => (cur.value > best.value ? cur : best), weekVals[0] ?? { day: "-", value: 0 }));
-      const allDays: number[] = [];
-      for (let i = 29; i >= 0; i--) {
-        const d = localDateKey(daysAgoLocal(i, nowForRange));
-        const items = hRows.map((h) => { const e = entryRows.find((x) => x.date === d && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
-        allDays.push(dailyProgress(items));
-      }
-      let curStreak = 0; for (let i = allDays.length - 1; i >= 0; i--) { if (isStreakDay(allDays[i])) curStreak++; else break; }
-      setStreak(curStreak);
-      let longest = 0, run = 0; for (const v of allDays) { if (isStreakDay(v)) { run++; longest = Math.max(longest, run); } else run = 0; }
-      const avgMonth = allDays.length ? Math.round(allDays.reduce((a, b) => a + b, 0) / allDays.length) : 0;
-      const perfect = allDays.filter((v) => v === 100).length;
-      setMonthStats({ avg: avgMonth, perfect, longest });
-      const bd = hRows.map((h) => {
-        const vals = allDays.map((_, idx) => {
-          const d = localDateKey(daysAgoLocal(29 - idx, nowForRange));
-          const e = entryRows.find((x) => x.date === d && x.habit_id === h.id);
-          const v = e ? Number(e.value) : 0;
-          if (h.type === "BOOLEAN") return v ? 100 : 0;
-          return Math.round(Math.min(100, (v / Number(h.target_value)) * 100));
+      setMonthLoading(true);
+      try {
+        const nowForRange = new Date();
+        // Hero + streak: selalu 30 hari terakhir s.d. hari ini (jangkar kini).
+        const thirtyAgo = localDateKey(daysAgoLocal(29, nowForRange));
+        const { data: nowData } = await supabase.from("mutabaah_entries").select("habit_id,value,status,date").eq("family_id", family.familyId).eq("user_id", targetId).gte("date", thirtyAgo);
+        const nowRows = (nowData ?? []) as EntryRow[];
+        const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+        const weekVals: { day: string; value: number }[] = [];
+        for (let i = 6; i >= 0; i--) {
+          const d = daysAgoLocal(i, nowForRange);
+          const iso = localDateKey(d);
+          const items = hRows.map((h) => { const e = nowRows.find((x) => x.date === iso && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0, status: e?.status }; });
+          weekVals.push({ day: dayNames[d.getDay()], value: dailyProgress(items) });
+        }
+        setWeekly(weekVals);
+        setAvgWeekly(weekVals.length ? Math.round(weekVals.reduce((a, b) => a + b.value, 0) / weekVals.length) : 0);
+        setActiveDays(weekVals.filter((w) => w.value > 0).length);
+        setBestDay(weekVals.reduce((best, cur) => (cur.value > best.value ? cur : best), weekVals[0] ?? { day: "-", value: 0 }));
+        const streakDays: number[] = [];
+        for (let i = 29; i >= 0; i--) {
+          const d = localDateKey(daysAgoLocal(i, nowForRange));
+          const items = hRows.map((h) => { const e = nowRows.find((x) => x.date === d && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0, status: e?.status }; });
+          streakDays.push(dailyProgress(items));
+        }
+        let curStreak = 0; for (let i = streakDays.length - 1; i >= 0; i--) { if (isStreakDay(streakDays[i])) curStreak++; else break; }
+        setStreak(curStreak);
+
+        // Bulan terfilter: tgl 1 s.d. akhir bulan (hari ini bila bulan berjalan).
+        const mFirst = new Date(nowForRange.getFullYear(), nowForRange.getMonth() + monthOffset, 1);
+        const mYear = mFirst.getFullYear();
+        const mMon = mFirst.getMonth();
+        const mDays = new Date(mYear, mMon + 1, 0).getDate();
+        const mElapsed = monthOffset === 0 ? nowForRange.getDate() : mDays;
+        const pad2 = (n: number) => String(n).padStart(2, "0");
+        const mStart = `${mYear}-${pad2(mMon + 1)}-01`;
+        const mNext = new Date(mYear, mMon + 1, 1);
+        const mEndEx = `${mNext.getFullYear()}-${pad2(mNext.getMonth() + 1)}-01`;
+        const { data: monthData } = await supabase.from("mutabaah_entries").select("habit_id,value,status,date,context,note").eq("family_id", family.familyId).eq("user_id", targetId).gte("date", mStart).lt("date", mEndEx);
+        const monthRows = (monthData ?? []) as EntryRow[];
+        setDayEntries(monthRows);
+        const monthISOs: string[] = [];
+        for (let d = 1; d <= mElapsed; d++) monthISOs.push(`${mYear}-${pad2(mMon + 1)}-${pad2(d)}`);
+        const mDaily = monthISOs.map((iso) =>
+          dailyProgress(
+            hRows.map((h) => { const e = monthRows.find((x) => x.date === iso && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0, status: e?.status }; })
+          )
+        );
+        const avgMonth = mDaily.length ? Math.round(mDaily.reduce((a, b) => a + b, 0) / mDaily.length) : 0;
+        const perfect = mDaily.filter((v) => v === 100).length;
+        let longest = 0, run = 0; for (const v of mDaily) { if (isStreakDay(v)) { run++; longest = Math.max(longest, run); } else run = 0; }
+        setMonthStats({ avg: avgMonth, perfect, longest });
+        const bd = hRows.map((h) => {
+          const vals = monthISOs.map((iso) => {
+            const e = monthRows.find((x) => x.date === iso && x.habit_id === h.id);
+            const v = e ? Number(e.value) : 0;
+            if (h.type === "BOOLEAN") return v ? 100 : 0;
+            return Math.round(Math.min(100, (v / Number(h.target_value)) * 100));
+          });
+          return { id: h.id, name: h.name, category: h.category, pct: vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0 };
         });
-        return { id: h.id, name: h.name, category: h.category, pct: vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0 };
-      });
-      bd.sort((a, b) => b.pct - a.pct);
-      setBreakdown(bd);
-      const now = new Date(); const year = now.getFullYear(); const month = now.getMonth(); const daysInMonth = new Date(year, month + 1, 0).getDate();
-      const cal: typeof monthDays = [];
-      for (let d = 1; d <= daysInMonth; d++) {
-        const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-        const items = hRows.map((h) => { const e = entryRows.find((x) => x.date === iso && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
-        const hasAny = entryRows.some((x) => x.date === iso);
-        const p = hasAny ? dailyProgress(items) : null;
-        cal.push({ day: d, progress: p, status: calendarStatus(p) });
+        bd.sort((a, b) => b.pct - a.pct);
+        setBreakdown(bd);
+        const cal: typeof monthDays = [];
+        for (let d = 1; d <= mDays; d++) {
+          const iso = `${mYear}-${pad2(mMon + 1)}-${pad2(d)}`;
+          const items = hRows.map((h) => { const e = monthRows.find((x) => x.date === iso && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0, status: e?.status }; });
+          const hasAny = monthRows.some((x) => x.date === iso);
+          const p = hasAny ? dailyProgress(items) : null;
+          cal.push({ day: d, progress: p, status: calendarStatus(p) });
+        }
+        setMonthDays(cal);
+        const periodLabel = monthOffset === 0 ? "bulan ini" : mFirst.toLocaleDateString("id-ID", { month: "long" });
+        if (bd.length && mDaily.some((v) => v > 0)) { const top = bd[0]; const low = bd[bd.length - 1]; setInsight(top.id === low.id ? `${top.name} terjaga dengan baik ${periodLabel} (${top.pct}%). Pertahankan pelan-pelan.` : `${top.name} menjadi kebiasaan paling terjaga ${periodLabel} (${top.pct}%). ${low.name} masih bertumbuh (${low.pct}%) — temani pelan-pelan.`); }
+        else setInsight(monthOffset === 0 ? "Belum ada data bulan ini. Mulai dari satu isian hari ini." : `Belum ada data pada ${periodLabel}.`);
+      } finally {
+        setMonthLoading(false);
+        setLoading(false);
       }
-      setMonthDays(cal);
-      if (bd.length) { const top = bd[0]; const low = bd[bd.length - 1]; setInsight(top.id === low.id ? `${top.name} terjaga dengan baik bulan ini (${top.pct}%). Pertahankan pelan-pelan.` : `${top.name} menjadi kebiasaan paling terjaga bulan ini (${top.pct}%). ${low.name} masih bertumbuh (${low.pct}%) — temani pelan-pelan.`); }
-      else setInsight("Belum ada data bulan ini. Mulai dari satu isian hari ini.");
-      setLoading(false);
     })();
-  }, [supabase, dayKey, viewUserId]);
+  }, [supabase, dayKey, viewUserId, monthOffset]);
 
   if (loading) {
     return (
@@ -438,11 +459,35 @@ export default function ProgressPage() {
         <Card className="rounded-[20px] p-5">
           <div className="flex items-center justify-between gap-2">
             <h3 className="font-semibold flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-primary" /> Rincian amalan
+              <TrendingUp className="h-4 w-4 text-primary" aria-hidden="true" /> Rincian amalan
             </h3>
-            <span className="text-[11px] bg-muted px-2 py-0.5 rounded-full font-medium">30 hari terakhir</span>
+            <div className="flex items-center gap-0.5" role="group" aria-label="Pilih bulan">
+              <button
+                type="button"
+                onClick={() => goMonth(-1)}
+                disabled={monthOffset <= -11 || monthLoading}
+                aria-label="Bulan sebelumnya"
+                className="h-9 w-9 rounded-full flex items-center justify-center hover:bg-muted disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              </button>
+              <span className="text-[11px] font-semibold capitalize tabular-nums min-w-[86px] text-center" aria-live="polite">
+                {monthLoading ? "Memuat…" : calMeta.monthShort}
+              </span>
+              <button
+                type="button"
+                onClick={() => goMonth(1)}
+                disabled={monthOffset >= 0 || monthLoading}
+                aria-label="Bulan berikutnya"
+                className="h-9 w-9 rounded-full flex items-center justify-center hover:bg-muted disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">Diurut dari yang paling terjaga · ketuk untuk histori 30 hari.</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Diurut dari yang paling terjaga · {calMeta.isCurrent ? "30 hari terakhir" : calMeta.monthLabel} · ketuk untuk histori.
+          </p>
           <div className="mt-5 space-y-5">
             {(showAll ? breakdown : breakdown.slice(0, 6)).map((h) => {
               const status = h.pct >= 80 ? "Terjaga" : h.pct >= 50 ? "Bertumbuh" : "Baru dimulai";
@@ -457,14 +502,14 @@ export default function ProgressPage() {
                   key={h.id}
                   type="button"
                   onClick={() => setFocusHabitId(h.id)}
-                  aria-label={`Lihat histori 30 hari ${h.name}, rata-rata ${h.pct} persen`}
+                  aria-label={`Lihat histori ${h.name}, rata-rata ${h.pct} persen`}
                   className="block w-full text-left rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <div className="flex items-center justify-between gap-2 text-sm">
                     <span className="font-medium truncate">{h.name}</span>
                     <span className={`font-bold text-xs px-2 py-0.5 rounded-full tabular-nums shrink-0 ${tone.badge}`}>{h.pct}%</span>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{h.category} · {status} · 30 hari</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{h.category} · {status}</div>
                   <div className="mt-2 flex items-end gap-1" role="img" aria-label={`${h.name} tujuh hari terakhir`}>
                     {(spark[h.id] ?? []).slice(-7).map((v, i) => (
                       <div key={i} className="flex-1 rounded-full bg-muted overflow-hidden flex items-end" style={{ height: "24px" }}>
@@ -479,7 +524,9 @@ export default function ProgressPage() {
               );
             })}
             {breakdown.length === 0 && (
-              <p className="text-sm text-muted-foreground leading-6">Belum ada data 30 hari. Isi mutabaah hari ini untuk mulai melihat polanya.</p>
+              <p className="text-sm text-muted-foreground leading-6">
+                {calMeta.isCurrent ? "Belum ada data 30 hari. Isi mutabaah hari ini untuk mulai melihat polanya." : `Belum ada data pada ${calMeta.monthLabel}.`}
+              </p>
             )}
           </div>
           {breakdown.length > 6 && (
@@ -501,7 +548,7 @@ export default function ProgressPage() {
           <div className="mt-4 flex items-center gap-5">
             <div className="shrink-0">
               <div className="text-[44px] font-bold leading-none tracking-tight tabular-nums">{monthStats.avg}<span className="text-xl text-muted-foreground">%</span></div>
-              <div className="text-xs text-muted-foreground mt-1.5">rata-rata 30 hari</div>
+              <div className="text-xs text-muted-foreground mt-1.5">rata-rata {calMeta.isCurrent ? "30 hari" : calMeta.monthShort.toLowerCase()}</div>
             </div>
             <div className="flex-1 min-w-0 space-y-2.5 border-l border-border/70 pl-5">
               <div className="flex items-center gap-2.5">
@@ -552,8 +599,8 @@ export default function ProgressPage() {
                   <div key={`kosong-awal-${i}`} aria-hidden="true" />
                 ))}
                 {monthDays.map((d) => {
-                  const isToday = d.day === calMeta.todayNum;
-                  const isFuture = d.day > calMeta.todayNum;
+                  const isToday = calMeta.isCurrent && d.day === calMeta.todayNum;
+                  const isFuture = calMeta.isCurrent && d.day > calMeta.todayNum;
                   const isSelected = selectedDay === d.day;
                   return (
                     <button
@@ -730,42 +777,38 @@ export default function ProgressPage() {
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
-          <div className="mt-4 flex gap-1 rounded-full bg-muted p-1" role="group" aria-label="Rentang histori">
-            {( [
-              { key: "7", label: "7 hari" },
-              { key: "month", label: "Bulan ini" },
-              { key: "30", label: "30 hari" },
-            ] as const ).map((r) => (
-              <button
-                key={r.key}
-                type="button"
-                onClick={() => setFocusRange(r.key)}
-                aria-pressed={focusRange === r.key}
-                className={`flex-1 rounded-full px-3 py-2 min-h-[40px] text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${focusRange === r.key ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
-          <div className="mt-4 flex items-end gap-1" role="img" aria-label={`Histori ${focusDetail.rangeLabel} ${focusDetail.habit.name}`}>
-            {focusDetail.series.map((v, i) => {
-              const ctx = focusDetail.isWajib ? (focusDetail.contexts[i] ?? null) : null;
-              return (
-                <div key={i} className="flex-1 rounded-full bg-muted overflow-hidden flex items-end min-w-0" style={{ height: "64px" }}>
-                  <div
-                    className={`w-full rounded-full ${v >= 100 ? (ctx === "BERJAMAAH" ? "bg-emerald-500" : "bg-primary") : v > 0 ? "bg-amber-500" : "bg-transparent"}`}
-                    style={{ height: v > 0 ? `${Math.max(v, 12)}%` : "0%" }}
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-1.5 flex gap-1" aria-hidden="true">
-            {focusDetail.dates.map((d, i) => (
-              <span key={i} className="flex-1 min-w-0 text-center text-[9px] tabular-nums text-muted-foreground">
-                {focusDetail.dates.length <= 10 ? d : d === 1 || d % 5 === 0 ? d : ""}
+          <div className="mt-4 grid grid-cols-7 gap-1 text-center" role="img" aria-label={`Kalender ${focusDetail.rangeLabel} ${focusDetail.habit.name}`}>
+            {["S", "S", "R", "K", "J", "S", "M"].map((d, i) => (
+              <span key={i} className="text-[10px] font-semibold text-muted-foreground py-0.5" aria-hidden="true">
+                {d}
               </span>
             ))}
+            {Array.from({ length: calMeta.firstOffset }).map((_, i) => (
+              <span key={`kosong-${i}`} aria-hidden="true" />
+            ))}
+            {Array.from({ length: calMeta.daysInMonth }).map((_, i) => {
+              const day = i + 1;
+              const v = day <= focusDetail.series.length ? (focusDetail.series[day - 1] ?? 0) : null;
+              const ctx = focusDetail.isWajib && day <= focusDetail.contexts.length ? (focusDetail.contexts[day - 1] ?? null) : null;
+              const isToday = calMeta.isCurrent && day === calMeta.todayNum;
+              const isFuture = v === null;
+              return (
+                <span
+                  key={day}
+                  title={v === null ? "mendatang" : v >= 100 ? (ctx === "BERJAMAAH" ? "berjamaah di masjid" : "terisi penuh") : v > 0 ? `${v}% terisi` : "belum terisi"}
+                  aria-current={isToday ? "date" : undefined}
+                  className={`aspect-square w-full rounded-lg flex items-center justify-center text-[11px] tabular-nums border transition-colors
+                    ${isToday ? "font-bold ring-2 ring-primary ring-offset-1" : "font-medium"}
+                    ${isFuture ? "bg-transparent text-muted-foreground/40 border-dashed border-border" : ""}
+                    ${!isFuture && v !== null && v >= 100 ? (ctx === "BERJAMAAH" ? "bg-emerald-500 border-emerald-500 text-white" : "bg-primary border-primary text-white") : ""}
+                    ${!isFuture && v !== null && v > 0 && v < 100 ? "bg-amber-100 border-amber-200 text-amber-800" : ""}
+                    ${!isFuture && v === 0 ? "bg-muted/60 border-transparent text-muted-foreground" : ""}
+                  `}
+                >
+                  {day}
+                </span>
+              );
+            })}
           </div>
           {focusDetail.isWajib && (
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">

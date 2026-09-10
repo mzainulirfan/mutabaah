@@ -68,7 +68,7 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
         dailyProgress(
           habits.map((h) => {
             const e = rows.find((x) => x.habit_id === h.id);
-            return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 };
+            return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0, status: e?.status };
           })
         );
       setTodayPct(progressOf(todayRows));

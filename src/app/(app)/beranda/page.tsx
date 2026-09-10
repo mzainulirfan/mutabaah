@@ -135,18 +135,18 @@ export default function BerandaPage() {
         const name = profileMap.get(m.user_id) ?? m.user_id.slice(0, 6);
         const items = (habits ?? []).map((h) => {
           const e = todayMap.get(`${m.user_id}:${h.id}`);
-          return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 };
+          return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0, status: e?.status };
         });
         const itemsY = (habits ?? []).map((h) => {
           const e = yMap.get(`${m.user_id}:${h.id}`);
-          return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 };
+          return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0, status: e?.status };
         });
         const prog = dailyProgress(items);
         const progY = dailyProgress(itemsY);
         familySum += prog; familySumYesterday += progY;
         const days: string[] = []; for (let i = 29; i >= 0; i--) days.push(localDateKey(daysAgoLocal(i, now)));
         const dailyVals = days.map((d) => {
-          const itemsD = (habits ?? []).map((h) => { const e = last30Map.get(`${m.user_id}|${d}|${h.id}`); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
+          const itemsD = (habits ?? []).map((h) => { const e = last30Map.get(`${m.user_id}|${d}|${h.id}`); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0, status: e?.status }; });
           return dailyProgress(itemsD);
         });
         let streak = 0; for (let i = dailyVals.length - 1; i >= 0; i--) { if (isStreakDay(dailyVals[i])) streak++; else break; }
@@ -170,7 +170,7 @@ export default function BerandaPage() {
         const iso = localDateKey(d);
         const perMember = memberStats.map((_, idx) => {
           const uid = userIds[idx];
-          const itemsD = (habits ?? []).map((h) => { const e = last30Map.get(`${uid}|${iso}|${h.id}`); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0 }; });
+          const itemsD = (habits ?? []).map((h) => { const e = last30Map.get(`${uid}|${iso}|${h.id}`); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0, status: e?.status }; });
           return dailyProgress(itemsD);
         });
         weekDays.push({ day: dayNames[d.getDay()], value: perMember.length ? Math.round(perMember.reduce((a, b) => a + b, 0) / perMember.length) : 0 });
@@ -253,9 +253,9 @@ export default function BerandaPage() {
   function refreshSelfProgress(next: Record<string, Entry>) {
     const items = myHabits.map((h) => {
       const e = next[h.id];
-      if (!e || e.status === "PENDING") return { type: h.type, target: h.target_value, value: 0 };
-      if (e.status === "COMPLETED") return { type: h.type, target: h.target_value, value: h.target_value };
-      return { type: h.type, target: h.target_value, value: e.value };
+      if (!e || e.status === "PENDING") return { type: h.type, target: h.target_value, value: 0, status: "PENDING" as const };
+      if (e.status === "COMPLETED") return { type: h.type, target: h.target_value, value: h.target_value, status: "COMPLETED" as const };
+      return { type: h.type, target: h.target_value, value: e.value, status: e.status };
     });
     const prog = dailyProgress(items);
     const nextMembers = members.map((m) => (userId && m.id === userId ? { ...m, progress: prog } : m));
