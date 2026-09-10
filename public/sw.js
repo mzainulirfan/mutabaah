@@ -1,5 +1,5 @@
-// Mutabaah PWA SW — v5 quran via alquran.cloud (Madinah akurat)
-const CACHE = "mutabaah-v5";
+// Mutabaah PWA SW — v6 (pengingat lokal)
+const CACHE = "mutabaah-v6";
 const PRECACHE = ["/", "/manifest.json", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -39,8 +39,8 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Images/fonts/manifest/quran: cache-first, hanya same-origin quran
-  if (url.pathname.match(/\.(png|svg|woff2|json)$/) && !url.pathname.startsWith("/_next/") && (url.pathname.startsWith("/quran/") || url.pathname.match(/\.(png|svg|woff2)$/))) {
+  // Images/fonts/manifest: cache-first, hanya same-origin
+  if (url.pathname.match(/\.(png|svg|woff2|json)$/) && !url.pathname.startsWith("/_next/") && (url.pathname.match(/\.(png|svg|woff2)$/))) {
     e.respondWith(
       caches.match(req).then((cached) => {
         if (cached) return cached;
@@ -61,4 +61,18 @@ self.addEventListener("fetch", (e) => {
     if (res.ok) { const clone = res.clone(); caches.open(CACHE).then((c) => c.put(req, clone)); }
     return res;
   }).catch(() => caches.match(req)));
+});
+
+// Ketuk notifikasi pengingat → buka/fokus halaman mutabaah.
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "/mutabaah";
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      for (const w of wins) {
+        if (new URL(w.url).pathname === url) return w.focus();
+      }
+      return self.clients.openWindow(url);
+    })
+  );
 });

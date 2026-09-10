@@ -47,6 +47,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if (!family) return;
       setRole(family.role);
       setFamilyName(family.familyName);
+      // Jadwalkan pengingat lokal bila izin sudah diberikan.
+      const { refreshReminders } = await import("@/lib/reminders");
+      await refreshReminders(supabase);
     })();
   }, []);
 

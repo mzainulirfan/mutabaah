@@ -41,6 +41,9 @@ export default function ProfilPage() {
   const [draftFamily, setDraftFamily] = useState("");
   const [savingFamily, setSavingFamily] = useState(false);
   const [showStreakPref, setShowStreakPref] = useState(true);
+  const [perm, setPerm] = useState<NotificationPermission | "unsupported">(() =>
+    typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported"
+  );
 
   useEffect(() => {
     void (async () => {
@@ -95,6 +98,8 @@ export default function ProfilPage() {
     setErr(null);
     try {
       await supabase.from("mutabaah_notification_preferences").upsert({ user_id: user.id, enabled: notif.enabled, morning_time: notif.morning, evening_time: notif.evening });
+      const { refreshReminders } = await import("@/lib/reminders");
+      await refreshReminders(supabase);
       setMsg("Pengingat disimpan.");
     } catch (e: unknown) {
       setErr(getErrorMessage(e, "Pengingat belum tersimpan — coba lagi."));
@@ -143,6 +148,18 @@ export default function ProfilPage() {
       setErr(getErrorMessage(e));
     } finally {
       setSavingFamily(false);
+    }
+  };
+
+  const handleEnableNotif = async () => {
+    const { requestReminderPermission, refreshReminders } = await import("@/lib/reminders");
+    const result = await requestReminderPermission();
+    setPerm(result);
+    if (result === "granted") {
+      await refreshReminders(supabase);
+      setMsg("Notifikasi diaktifkan di perangkat ini.");
+    } else if (result === "denied") {
+      setErr("Izin notifikasi ditolak. Aktifkan lewat pengaturan browser bila berubah pikiran.");
     }
   };
 
@@ -200,11 +217,6 @@ export default function ProfilPage() {
             </span>
           )}
         </div>
-        <p className="relative text-xs text-white/60 mt-5 leading-5">
-          {user
-            ? "Catatan dan progresmu hanya terlihat oleh keluargamu sendiri."
-            : "Progresmu saat ini hanya tersimpan di perangkat ini. Masuk agar tersimpan aman."}
-        </p>
       </div>
 
       {msg && <Toast kind="success" message={msg} />}
@@ -316,9 +328,6 @@ export default function ProfilPage() {
             </ul>
           </Card>
         )}
-        <p className="text-center text-xs text-muted-foreground leading-5 mt-3">
-          Perubahan di keluarga langsung berlaku untuk semua anggota,<br />jadi ubahlah dengan tenang dan secukupnya.
-        </p>
       </section>
 
       {/* Pengingat */}
@@ -327,8 +336,26 @@ export default function ProfilPage() {
           <Bell className="h-4 w-4 text-primary" aria-hidden="true" /> Pengingat harian
         </h2>
         <Card className="rounded-[20px] p-5">
-          <p className="text-xs text-muted-foreground leading-5">Disapa lembut hanya bila belum mengisi.</p>
           <div className="mt-4 space-y-4">
+            <div className="flex items-center justify-between gap-3 rounded-2xl border p-3.5 min-h-[44px]">
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-medium">Notifikasi perangkat</span>
+                <span className="block text-[11px] text-muted-foreground mt-0.5">
+                  {perm === "granted"
+                    ? "Aktif di perangkat ini."
+                    : perm === "denied"
+                      ? "Diblokir — aktifkan lewat pengaturan browser."
+                      : perm === "unsupported"
+                        ? "Browser ini tidak mendukung notifikasi."
+                        : "Belum diminta — perlu izin browser."}
+                </span>
+              </span>
+              {perm !== "granted" && perm !== "unsupported" && (
+                <Button size="sm" className="rounded-full shrink-0" onClick={() => void handleEnableNotif()}>
+                  Aktifkan
+                </Button>
+              )}
+            </div>
             <label className="flex items-center justify-between gap-3 rounded-2xl border p-3.5 cursor-pointer hover:border-primary/15 transition-colors min-h-[44px]">
               <span className="text-sm font-medium">Aktifkan pengingat</span>
               <input type="checkbox" checked={notif.enabled} onChange={(e) => setNotif({ ...notif, enabled: e.target.checked })} className="h-5 w-5 shrink-0 accent-[var(--primary)]" />
