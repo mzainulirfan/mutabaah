@@ -22,8 +22,8 @@ export default function BerandaPage() {
   const [userName, setUserName] = useState("Ayah");
   const [selfDelta, setSelfDelta] = useState<number | null>(null);
   const [selfActive, setSelfActive] = useState(0);
-  const [quotes, setQuotes] = useState<{ date: string; label: string; text: string }[]>([]);
-  const [quoteIdx, setQuoteIdx] = useState(0);
+  type Quote = { userId: string; name: string; isMine: boolean; date: string; label: string; text: string };
+  const [slide, setSlide] = useState<{ list: Quote[]; idx: number }>({ list: [], idx: 0 });
   const [members, setMembers] = useState<{ id: string; name: string; progress: number; streak: number; role: string }[]>([]);
   const [familyProgress, setFamilyProgress] = useState(0);
   const [delta, setDelta] = useState<number | null>(null);
@@ -54,14 +54,26 @@ export default function BerandaPage() {
     return () => clearTimeout(t);
   }, []);
 
-  // Slideshow refleksi — berganti tiap 2 detik bila lebih dari 1;
-  // hormati preferensi reduced motion.
+  // Slideshow refleksi sekeluarga — acak, berganti tiap 5 menit bila lebih dari 1,
+  // kocok ulang tiap putaran penuh; hormati preferensi reduced motion.
   useEffect(() => {
-    if (quotes.length < 2) return;
+    if (slide.list.length < 2) return;
     if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    const t = setInterval(() => setQuoteIdx((i) => (i + 1) % quotes.length), 2000);
+    const t = setInterval(() => {
+      setSlide((s) => {
+        if (s.list.length < 2) return s;
+        const next = (s.idx + 1) % s.list.length;
+        if (next !== 0) return { list: s.list, idx: next };
+        const arr = [...s.list];
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return { list: arr, idx: 0 };
+      });
+    }, 300000);
     return () => clearInterval(t);
-  }, [quotes.length]);
+  }, [slide.list.length]);
 
   useEffect(() => {
     // setState hanya di dalam kelanjutan async (pola fetch-on-mount yang diizinkan),
@@ -99,23 +111,45 @@ export default function BerandaPage() {
       const todayMap = new Map(((todayEntries ?? []) as EntryRow[]).map((e) => [`${e.user_id}:${e.habit_id}`, e]));
       const yMap = new Map(((yesterdayEntries ?? []) as EntryRow[]).map((e) => [`${e.user_id}:${e.habit_id}`, e]));
       const last30Map = new Map(((last30 ?? []) as EntryRow[]).map((e) => [`${e.user_id}|${e.date}|${e.habit_id}`, e]));
-      // Refleksi milik sendiri 30 hari terakhir — terbaru dulu, satu per tanggal.
-      const seenDates = new Set<string>();
-      const quoteRows: { date: string; label: string; text: string }[] = [];
-      for (const e of ((last30 ?? []) as EntryRow[])) {
-        const text = e.note?.trim() ?? "";
-        if (e.user_id !== user.id || !text || seenDates.has(e.date)) continue;
-        seenDates.add(e.date);
-        const [yy, mm, dd] = e.date.split("-").map(Number);
-        quoteRows.push({
-          date: e.date,
+      // Refleksi sekeluarga 30 hari terakhir via RPC (teks + nama saja, tanpa angka).
+      // Gagal (mis. migrasi 011 belum jalan) → fallback ke milik sendiri.
+      const toQuote = (userId: string, name: string, date: string, text: string) => {
+        const [yy, mm, dd] = date.split("-").map(Number);
+        return {
+          userId,
+          name,
+          isMine: userId === user.id,
+          date,
           label: new Date(yy, mm - 1, dd).toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "short" }),
           text,
-        });
+        };
+      };
+      const shuffle = <T,>(arr: T[]) => {
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+      };
+      try {
+        const { data: famQuotes } = await supabase.rpc("get_family_reflections", { p_family_id: ctx.familyId });
+        const rows = ((famQuotes ?? []) as { user_id: string; name: string; date: string; note: string }[])
+          .filter((r) => r.note?.trim())
+          .slice(0, 24)
+          .map((r) => toQuote(r.user_id, r.name, r.date, r.note.trim()));
+        setSlide({ list: shuffle(rows).slice(0, 12), idx: 0 });
+      } catch {
+        const seenDates = new Set<string>();
+        const fallback: { userId: string; name: string; isMine: boolean; date: string; label: string; text: string }[] = [];
+        for (const e of ((last30 ?? []) as EntryRow[])) {
+          const text = e.note?.trim() ?? "";
+          if (e.user_id !== user.id || !text || seenDates.has(e.date)) continue;
+          seenDates.add(e.date);
+          fallback.push(toQuote(e.user_id, profileMap.get(e.user_id) ?? "Saya", e.date, text));
+        }
+        fallback.sort((a, b) => (a.date < b.date ? 1 : -1));
+        setSlide({ list: shuffle(fallback).slice(0, 12), idx: 0 });
       }
-      quoteRows.sort((a, b) => (a.date < b.date ? 1 : -1));
-      setQuotes(quoteRows.slice(0, 7));
-      setQuoteIdx(0);
       const memberStats: typeof members = [];
       let familySum = 0; let familySumYesterday = 0;
       let myDelta: number | null = null; let myActive = 0;
@@ -316,33 +350,33 @@ export default function BerandaPage() {
         </dl>
       </div>
 
-      {/* Refleksi — slideshow kutipan, di bawah hero agar terlihat tanpa scroll */}
-      {quotes.length > 0 && (
-        <section aria-label="Refleksi terakhir" aria-live="polite">
+      {/* Refleksi sekeluarga — slideshow kutipan acak, di bawah hero */}
+      {slide.list.length > 0 && (
+        <section aria-label="Refleksi keluarga" aria-live="polite">
           <Card className="rounded-[20px] p-5 bg-[var(--primary-soft)]/40 border-primary/10">
             <div className="flex items-start gap-3">
               <span className="h-9 w-9 rounded-xl bg-card border border-primary/10 flex items-center justify-center shrink-0" aria-hidden="true">
                 <Quote className="h-4 w-4 text-primary" />
               </span>
               <div className="flex-1 min-w-0">
-                <blockquote key={quoteIdx} className="text-[15px] leading-7 font-medium">
-                  “{quotes[quoteIdx % quotes.length].text}”
+                <blockquote key={`${slide.idx % slide.list.length}-${slide.list[slide.idx % slide.list.length].date}`} className="text-[15px] leading-7 font-medium">
+                  “{slide.list[slide.idx % slide.list.length].text}”
                 </blockquote>
                 <p className="text-xs text-muted-foreground mt-1.5 capitalize tabular-nums">
-                  Refleksimu · {quotes[quoteIdx % quotes.length].label}
+                  {slide.list[slide.idx % slide.list.length].isMine ? "Refleksimu" : slide.list[slide.idx % slide.list.length].name} · {slide.list[slide.idx % slide.list.length].label}
                 </p>
               </div>
             </div>
-            {quotes.length > 1 && (
+            {slide.list.length > 1 && (
               <div className="mt-3 flex items-center justify-center gap-1.5" role="group" aria-label="Pilih refleksi">
-                {quotes.map((q, i) => (
+                {slide.list.map((q, i) => (
                   <button
-                    key={q.date}
+                    key={`${q.userId}-${q.date}`}
                     type="button"
-                    onClick={() => setQuoteIdx(i)}
-                    aria-label={`Tampilkan refleksi ${q.label}`}
-                    aria-pressed={i === quoteIdx % quotes.length}
-                    className={`h-2 rounded-full transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${i === quoteIdx % quotes.length ? "w-5 bg-primary" : "w-2 bg-black/15 hover:bg-black/25"}`}
+                    onClick={() => setSlide((s) => ({ list: s.list, idx: i }))}
+                    aria-label={`Tampilkan refleksi ${q.isMine ? "milikmu" : q.name}, ${q.label}`}
+                    aria-pressed={i === slide.idx % slide.list.length}
+                    className={`h-2 rounded-full transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${i === slide.idx % slide.list.length ? "w-5 bg-primary" : "w-2 bg-black/15 hover:bg-black/25"}`}
                   />
                 ))}
               </div>
