@@ -2,11 +2,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Bell, User, Mail, Check, AlertCircle, Users, Sun, Moon, ChevronRight, Target, Settings2, LogOut } from "lucide-react";
+import { Bell, User, Mail, Check, AlertCircle, Users, Sun, Moon, ChevronRight, Target, Settings2, LogOut, Pencil, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { logout } from "@/lib/actions/auth";
-import { getFamilyContext, getSessionUser } from "@/lib/family-context";
+import { clearFamilyCache, getFamilyContext, getSessionUser } from "@/lib/family-context";
 import { getErrorMessage } from "@/lib/utils";
 
 type FamilyMenuItem = {
@@ -31,6 +31,9 @@ export default function ProfilPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [savingName, setSavingName] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -82,6 +85,24 @@ export default function ProfilPage() {
     { href: "/keluarga/amalan", title: "Amalan", desc: "Daftar target harian yang diisi bersama", icon: Target, badge: `${activeHabits} aktif` },
     { href: "/keluarga/lainnya", title: "Lainnya", desc: "Nama keluarga dan tampilan rangkaian", icon: Settings2 },
   ];
+
+  const handleSaveName = async () => {
+    if (!user || savingName) return;
+    setErr(null);
+    setSavingName(true);
+    try {
+      const { updateProfileName } = await import("@/lib/actions/auth");
+      const res = await updateProfileName(draftName);
+      setUser({ ...user, name: res.name });
+      clearFamilyCache();
+      setEditingName(false);
+      setMsg("Nama diperbarui.");
+    } catch (e: unknown) {
+      setErr(getErrorMessage(e));
+    } finally {
+      setSavingName(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -243,16 +264,54 @@ export default function ProfilPage() {
         </h2>
         <Card className="rounded-[20px] p-5">
           {user ? (
-            <div className="flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate">{user.email}</div>
-                <div className="text-xs text-muted-foreground mt-1">Keluar akan mengakhiri sesi di perangkat ini.</div>
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor="display-name" className="text-xs font-semibold text-muted-foreground">
+                    Nama tampilan
+                  </label>
+                  {!editingName && (
+                    <button
+                      type="button"
+                      onClick={() => { setDraftName(user.name); setEditingName(true); }}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-primary rounded-full px-2 py-1 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> Ubah
+                    </button>
+                  )}
+                </div>
+                {editingName ? (
+                  <div className="mt-1.5 flex gap-2">
+                    <input
+                      id="display-name"
+                      value={draftName}
+                      onChange={(e) => setDraftName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") void handleSaveName(); if (e.key === "Escape") setEditingName(false); }}
+                      maxLength={60}
+                      autoComplete="off"
+                      autoFocus
+                      className="flex-1 min-w-0 rounded-xl border bg-card px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <Button size="sm" className="rounded-full shrink-0 min-h-[44px]" onClick={() => void handleSaveName()} disabled={savingName || draftName.trim().length < 2}>
+                      {savingName ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Simpan"}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="mt-1 text-[15px] font-semibold">{user.name}</div>
+                )}
+                <p className="text-[11px] text-muted-foreground mt-1">Nama ini terlihat oleh keluargamu.</p>
               </div>
-              <form action={logout} className="shrink-0">
-                <Button variant="outline" size="md" className="rounded-full text-red-700 border-red-200 hover:bg-red-50" type="submit">
-                  <LogOut className="h-4 w-4 mr-1.5" aria-hidden="true" /> Keluar
-                </Button>
-              </form>
+              <div className="flex items-center gap-3 border-t border-border/60 pt-4">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{user.email}</div>
+                  <div className="text-xs text-muted-foreground mt-1">Keluar akan mengakhiri sesi di perangkat ini.</div>
+                </div>
+                <form action={logout} className="shrink-0">
+                  <Button variant="outline" size="md" className="rounded-full text-red-700 border-red-200 hover:bg-red-50" type="submit">
+                    <LogOut className="h-4 w-4 mr-1.5" aria-hidden="true" /> Keluar
+                  </Button>
+                </form>
+              </div>
             </div>
           ) : (
             <div className="flex items-center gap-3">

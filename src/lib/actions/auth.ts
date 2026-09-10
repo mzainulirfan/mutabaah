@@ -69,6 +69,24 @@ export async function logout() {
   redirect("/login");
 }
 
+export async function updateProfileName(name: string) {
+  const supabase = await createClient();
+  if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
+  const clean = name.trim().replace(/\s+/g, " ");
+  if (clean.length < 2) throw new Error("Nama minimal 2 karakter.");
+  if (clean.length > 60) throw new Error("Nama maksimal 60 karakter.");
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Unauthorized — login dulu.");
+  const { error: metaErr } = await supabase.auth.updateUser({ data: { name: clean } });
+  if (metaErr) throw new Error(metaErr.message);
+  // Nama yang dilihat keluarga tersimpan di profil — sinkronkan juga.
+  const { error: profErr } = await supabase.from("mutabaah_profiles").upsert({ id: auth.user.id, name: clean });
+  if (profErr) throw new Error(profErr.message);
+  revalidatePath("/profil");
+  revalidatePath("/beranda");
+  return { name: clean };
+}
+
 export async function resetPassword(formData: FormData) {
   const supabase = await createClient();
   if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
