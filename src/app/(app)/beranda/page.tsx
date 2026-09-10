@@ -3,25 +3,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ProgressRing } from "@/components/app/progress-ring";
-import { Flame, ChevronRight, CheckCircle2, Users, Sparkles, TrendingUp, TrendingDown, Bell, X, ArrowRight, Quote } from "@/components/ui/hugeicons";
+import { Flame, ChevronRight, CheckCircle2, Users, Sparkles, TrendingUp, TrendingDown, Bell, Quote } from "@/components/ui/hugeicons";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { HabitCard } from "@/components/app/habit-card";
-import { Sheet } from "@/components/ui/sheet";
 import { dailyProgress, isStreakDay } from "@/lib/progress";
-import type { Entry, HabitCategory } from "@/lib/habits";
-import { enqueue } from "@/lib/offline-queue";
+import type { Entry } from "@/lib/habits";
 import { daysAgoLocal, localDateKey } from "@/lib/local-date";
 import { useLocalDayKey } from "@/hooks/use-local-day-key";
 import type { EntryRow } from "@/lib/supabase/types";
 import { getFamilyContext, getSessionUser } from "@/lib/family-context";
-
-const PRAYER_ORDER = ["subuh", "dzuhur", "ashar", "maghrib", "isya"];
-
-function prayerIndex(name: string) {
-  const n = name.toLowerCase();
-  return PRAYER_ORDER.findIndex((k) => n.includes(k));
-}
 
 export default function BerandaPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -52,8 +42,6 @@ export default function BerandaPage() {
   const [showStreak, setShowStreak] = useState(true);
   const [myHabits, setMyHabits] = useState<{ id: string; name: string; category: string; type: "BOOLEAN" | "QUANTITY" | "COUNTER" | "DURATION"; target_value: number; unit: string | null; sort_order: number }[]>([]);
   const [myEntries, setMyEntries] = useState<Record<string, Entry>>({});
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [quickError, setQuickError] = useState<string | null>(null);
 
   // localStorage hanya ada di browser — baca di dalam callback effect agar
   // prerender server tetap aman dan tidak ada setState sinkron di badan effect.
@@ -190,19 +178,7 @@ export default function BerandaPage() {
     })();
   }, [supabase, dayKey]);
 
-  // Amalan yang belum selesai hari ini — sholat ikut urutan waktu, sisanya ikut urutan daftar.
-  // Wajib di atas semua return agar urutan Hooks stabil (Rules of Hooks).
-  const upcoming = useMemo(() => {
-    const incomplete = myHabits.filter((h) => (myEntries[h.id]?.status ?? "PENDING") !== "COMPLETED");
-    const rank = (h: (typeof myHabits)[number]) => {
-      if (h.category === "Ibadah Wajib") {
-        const pi = prayerIndex(h.name);
-        return pi >= 0 ? pi : 99;
-      }
-      return 100 + h.sort_order;
-    };
-    return [...incomplete].sort((a, b) => rank(a) - rank(b)).slice(0, 3);
-  }, [myHabits, myEntries]);
+  // Catatan: isi-cepat kini ditangani komponen global QuickFillFab (AppShell).
 
   if (loading) {
     return (
@@ -249,81 +225,6 @@ export default function BerandaPage() {
   const activeView = isMemberOnly ? selfActive : activeDays;
 
   const remainingMine = myHabits.filter((h) => (myEntries[h.id]?.status ?? "PENDING") !== "COMPLETED").length;
-
-  function refreshSelfProgress(next: Record<string, Entry>) {
-    const items = myHabits.map((h) => {
-      const e = next[h.id];
-      if (!e || e.status === "PENDING") return { type: h.type, target: h.target_value, value: 0, status: "PENDING" as const };
-      if (e.status === "COMPLETED") return { type: h.type, target: h.target_value, value: h.target_value, status: "COMPLETED" as const };
-      return { type: h.type, target: h.target_value, value: e.value, status: e.status };
-    });
-    const prog = dailyProgress(items);
-    const nextMembers = members.map((m) => (userId && m.id === userId ? { ...m, progress: prog } : m));
-    setMembers(nextMembers);
-    const sum = nextMembers.reduce((a, m) => a + m.progress, 0);
-    setFamilyProgress(nextMembers.length ? Math.round(sum / nextMembers.length) : 0);
-  }
-
-  async function persistQuick(habitId: string, value: number, status: Entry["status"], context?: "SENDIRI" | "BERJAMAAH" | null) {
-    const iso = localDateKey();
-    if (!supabase || !userId || !/^[0-9a-f]{8}-/.test(userId) || !/^[0-9a-f]{8}-/.test(habitId)) return;
-    const payload = { habit_id: habitId, value, status, date: iso, context: context ?? null };
-    if (!navigator.onLine) {
-      enqueue(payload);
-      return;
-    }
-    try {
-      const { updateMutabaahEntry } = await import("@/lib/actions/habit");
-      await updateMutabaahEntry({ habit_id: habitId, user_id: userId, date: iso, value, status, context: context ?? null });
-      setQuickError(null);
-    } catch {
-      enqueue(payload);
-    }
-  }
-
-  function toggleQuick(habitId: string) {
-    const habit = myHabits.find((h) => h.id === habitId);
-    if (!habit) return;
-    if (habit.category === "Ibadah Wajib" && (myEntries[habitId]?.status ?? "PENDING") !== "COMPLETED") return;
-    setMyEntries((prev) => {
-      const cur = prev[habitId];
-      const next: Entry =
-        !cur || cur.status === "PENDING"
-          ? { habitId, value: habit.type === "BOOLEAN" ? 1 : habit.target_value, status: "COMPLETED" }
-          : { habitId, value: 0, status: "PENDING" };
-      persistQuick(habitId, next.value, next.status, null);
-      const map = { ...prev, [habitId]: next };
-      refreshSelfProgress(map);
-      return map;
-    });
-  }
-
-  function updateQuick(habitId: string, delta: number) {
-    const habit = myHabits.find((h) => h.id === habitId);
-    if (!habit) return;
-    setMyEntries((prev) => {
-      const cur = prev[habitId] ?? { habitId, value: 0, status: "PENDING" as const };
-      const nextVal = Math.max(0, Math.min(habit.target_value, cur.value + delta));
-      const status: Entry["status"] = nextVal === 0 ? "PENDING" : nextVal >= habit.target_value ? "COMPLETED" : "PARTIAL";
-      persistQuick(habitId, nextVal, status, cur.context ?? null);
-      const map = { ...prev, [habitId]: { habitId, value: nextVal, status, context: cur.context ?? null } };
-      refreshSelfProgress(map);
-      return map;
-    });
-  }
-
-  function pickContextQuick(habitId: string, ctx: "SENDIRI" | "BERJAMAAH") {
-    const habit = myHabits.find((h) => h.id === habitId);
-    if (!habit) return;
-    const target = habit.type === "BOOLEAN" ? 1 : habit.target_value;
-    const next: Entry = { habitId, value: target, status: "COMPLETED", context: ctx };
-    setMyEntries((prev) => {
-      const map = { ...prev, [habitId]: next };
-      refreshSelfProgress(map);
-      return map;
-    });
-    persistQuick(habitId, target, "COMPLETED", ctx);
-  }
 
   return (
     <div className="space-y-6 pb-6 lg:pb-0 overflow-x-clip">
@@ -608,45 +509,7 @@ export default function BerandaPage() {
         </Card>
       )}
 
-      <button onClick={() => setSheetOpen(true)} className="lg:hidden fixed bottom-[88px] right-4 z-20 rounded-full bg-primary text-white shadow-lg px-5 py-3 flex items-center gap-2 font-medium active:scale-95 transition-transform" aria-label="Isi mutabaah hari ini" aria-haspopup="dialog">
-        <Sparkles className="h-4 w-4" /> Isi Hari Ini
-      </button>
-
-      {sheetOpen && (
-        <Sheet label="Lanjut isi hari ini" onClose={() => setSheetOpen(false)}>
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="font-bold">Lanjut isi hari ini</h3>
-            <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0" onClick={() => setSheetOpen(false)} aria-label="Tutup">
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-          <p className="text-sm text-muted-foreground mt-1 leading-6">
-            {remainingMine === 0 ? "Alhamdulillah, semua sudah terisi. Semoga istiqamah." : `Tinggal ${remainingMine} lagi — mulai dari yang terdekat.`}
-          </p>
-          {upcoming.length > 0 ? (
-            <div className="mt-4 space-y-3 max-h-[50dvh] overflow-auto">
-              {upcoming.map((h) => (
-                <HabitCard
-                  key={h.id}
-                  habit={{ id: h.id, name: h.name, category: h.category as HabitCategory, type: h.type, target: h.target_value, unit: h.unit ?? undefined }}
-                  entry={myEntries[h.id]}
-                  onToggle={() => toggleQuick(h.id)}
-                  onUpdateValue={(d) => updateQuick(h.id, d)}
-                  onPickContext={h.category === "Ibadah Wajib" ? (ctx) => pickContextQuick(h.id, ctx) : undefined}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="mt-4 rounded-2xl bg-[var(--primary-soft)] border border-primary/10 p-4 text-sm text-primary leading-6">
-              Semua amalan hari ini sudah terisi. MasyaAllah.
-            </div>
-          )}
-          {quickError && <p className="text-xs text-amber-700 mt-3" role="status">{quickError}</p>}
-          <Link href="/mutabaah" onClick={() => setSheetOpen(false)} className="mt-4 flex items-center justify-center gap-1 rounded-full bg-primary text-white text-sm font-medium px-5 py-3 min-h-[44px]">
-            Buka semua di Mutabaah <ArrowRight className="h-4 w-4" />
-          </Link>
-        </Sheet>
-      )}
+      {/* FAB isi-cepat global dari AppShell (QuickFillFab) */}
     </div>
   );
 }

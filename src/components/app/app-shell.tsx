@@ -9,6 +9,7 @@ import type { SVGProps } from "react";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getFamilyContext, getSessionUser } from "@/lib/family-context";
+import { QuickFillFab } from "@/components/app/quick-fill-fab";
 
 // Ikon nav Hugeicons yang kompatibel dengan pemakaian nav (className + strokeWidth).
 function makeNavIcon(icon: IconSvgElement) {
@@ -145,9 +146,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <main id="main" className="flex-1 max-w-[1100px] w-full mx-auto px-4 lg:px-8 py-6 pb-28 lg:pb-8">{children}</main>
 
-        {/* Bottom Nav — full, calm segmented pill */}
-        <nav aria-label="Navigasi mobile" className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-card/95 backdrop-blur border-t pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.04)]">
-          <div className="mx-auto flex items-stretch justify-around px-3 pt-2 pb-1.5">
+        <QuickFillFab />
+
+        {/* Bottom Nav — full-width, garis tipis selebar item di tepi atas */}
+        <nav aria-label="Navigasi mobile" className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-card/95 backdrop-blur border-t pb-[env(safe-area-inset-bottom)]">
+          <div className="mx-auto flex items-stretch justify-around">
             {nav.map((item) => {
               const active = pathname === item.href || pathname.startsWith(item.href + "/");
               return (
@@ -156,18 +159,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   aria-label={item.label}
-                  className="flex flex-col items-center gap-[3px] min-w-[60px] min-h-[44px] py-1 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="relative flex-1 flex flex-col items-center min-h-[60px] rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span
                     className={cn(
-                      "flex items-center justify-center h-[28px] w-[52px] rounded-full transition-colors",
-                      active ? "bg-[var(--primary-soft)] text-primary" : "text-muted-foreground"
+                      "h-0.5 w-full transition-colors",
+                      active ? "bg-primary" : "bg-transparent"
                     )}
                     aria-hidden="true"
-                  >
-                    <item.icon className="h-[20px] w-[20px]" strokeWidth={active ? 2.2 : 1.8} />
+                  />
+                  <span className="flex flex-col items-center gap-1 pt-2 pb-1">
+                    <item.icon
+                      className={cn("h-[22px] w-[22px] transition-colors", active ? "text-primary" : "text-muted-foreground")}
+                      strokeWidth={active ? 2.2 : 1.8}
+                      aria-hidden="true"
+                    />
+                    <span className={cn("text-[11px] leading-none", active ? "font-semibold text-primary" : "font-medium text-muted-foreground")}>{item.label}</span>
                   </span>
-                  <span className={cn("text-[11px] leading-none", active ? "font-semibold text-primary" : "font-medium text-muted-foreground")}>{item.label}</span>
                 </Link>
               );
             })}
