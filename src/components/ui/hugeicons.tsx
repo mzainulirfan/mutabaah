@@ -18,6 +18,7 @@ import {
   UserIcon,
   StickyNote02Icon,
   WifiOff01Icon,
+  MoreVerticalIcon,
 } from "@hugeicons/core-free-icons";
 import type { SVGProps } from "react";
 
@@ -46,3 +47,4 @@ export const Plus = makeIcon(PlusIcon);
 export const User = makeIcon(UserIcon);
 export const StickyNote = makeIcon(StickyNote02Icon);
 export const WifiOff = makeIcon(WifiOff01Icon);
+export const MoreVertical = makeIcon(MoreVerticalIcon);

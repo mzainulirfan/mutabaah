@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link2, Trash2, Copy, Loader2, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { MoreVertical } from "@/components/ui/hugeicons";
 import Link from "next/link";
 import { Sheet } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";
@@ -17,8 +18,9 @@ export default function AnggotaPage() {
   const [loading, setLoading] = useState(true);
   const [denied, setDenied] = useState(false);
   const [myId, setMyId] = useState<string | null>(null);
+  const [myRole, setMyRole] = useState("MEMBER");
   const [familyId, setFamilyId] = useState<string | null>(null);
-  const [members, setMembers] = useState<{ id: string; name: string; role: string }[]>([]);
+  const [members, setMembers] = useState<{ id: string; name: string; role: string; canManage: boolean; canView: boolean }[]>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -26,6 +28,42 @@ export default function AnggotaPage() {
   const [invitesLoading, setInvitesLoading] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [menuTarget, setMenuTarget] = useState<{ id: string; name: string; role: string; canManage: boolean; canView: boolean } | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const handleToggleView = async (id: string, name: string, current: boolean) => {
+    if (!familyId || togglingId) return;
+    setTogglingId(id);
+    try {
+      const { setViewPermission } = await import("@/lib/actions/family");
+      await setViewPermission(familyId, id, !current);
+      clearFamilyCache();
+      setMembers((prev) => prev.map((x) => (x.id === id ? { ...x, canView: !current } : x)));
+      setMenuTarget((prev) => (prev && prev.id === id ? { ...prev, canView: !current } : prev));
+      setMsg(!current ? `${name} kini bisa melihat ringkasan keluarga.` : `Akses ringkasan ${name} dicabut.`);
+    } catch (e: unknown) {
+      setMsg(getErrorMessage(e));
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  const handleToggleManage = async (id: string, name: string, current: boolean) => {
+    if (!familyId || togglingId) return;
+    setTogglingId(id);
+    try {
+      const { setManagePermission } = await import("@/lib/actions/family");
+      await setManagePermission(familyId, id, !current);
+      clearFamilyCache();
+      setMembers((prev) => prev.map((x) => (x.id === id ? { ...x, canManage: !current } : x)));
+      setMenuTarget((prev) => (prev && prev.id === id ? { ...prev, canManage: !current } : prev));
+      setMsg(!current ? `${name} kini bisa mengelola amalan.` : `Izin kelola ${name} dicabut.`);
+    } catch (e: unknown) {
+      setMsg(getErrorMessage(e));
+    } finally {
+      setTogglingId(null);
+    }
+  };
 
   const load = useCallback(async () => {
     const user = await getSessionUser(supabase);
@@ -35,8 +73,9 @@ export default function AnggotaPage() {
     // Kelola anggota hanya untuk pengelola.
     if (family.role !== "OWNER" && family.role !== "PARENT") { setDenied(true); setLoading(false); return; }
     setMyId(user.id);
+    setMyRole(family.role);
     setFamilyId(family.familyId);
-    setMembers(family.members.map((member) => ({ id: member.user_id, name: member.name, role: member.role })));
+    setMembers(family.members.map((member) => ({ id: member.user_id, name: member.name, role: member.role, canManage: member.canManageHabits, canView: member.canViewFamily })));
     setLoading(false);
   }, [supabase]);
 
@@ -131,6 +170,44 @@ export default function AnggotaPage() {
     );
   }
 
+  const isManager = (p: { role: string; canManage: boolean }) => p.role === "OWNER" || p.role === "PARENT" || p.canManage;
+  const managers = members.filter(isManager);
+  const plainMembers = members.filter((p) => !isManager(p));
+
+  const renderRow = (p: { id: string; name: string; role: string; canManage: boolean; canView: boolean }) => (
+    <li key={p.id} className="flex items-center gap-1 p-1.5">
+      <Link
+        href={`/keluarga/anggota/${p.id}`}
+        aria-label={`Lihat progres ${p.name}`}
+        className="flex-1 min-w-0 flex items-center gap-3 rounded-2xl p-2 hover:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <div className="h-11 w-11 rounded-2xl bg-[var(--primary-soft)] flex items-center justify-center font-bold text-primary shrink-0" aria-hidden="true">{p.name[0]?.toUpperCase()}</div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold truncate">
+            {p.name}
+            {p.id === myId && (
+              <span className="ml-2 text-[10px] font-semibold text-primary bg-[var(--primary-soft)] px-2 py-0.5 rounded-full align-middle">Saya</span>
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground mt-1">{roleLabel[p.role] ?? "Anggota"}</div>
+        </div>
+        <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
+      </Link>
+      {p.role !== "OWNER" && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-11 w-11 shrink-0"
+          onClick={() => setMenuTarget({ id: p.id, name: p.name, role: p.role, canManage: p.canManage, canView: p.canView })}
+          aria-label={`Opsi untuk ${p.name}`}
+          aria-haspopup="dialog"
+        >
+          <MoreVertical className="h-5 w-5" />
+        </Button>
+      )}
+    </li>
+  );
+
   return (
     <div className="space-y-6">
       <div>
@@ -138,46 +215,42 @@ export default function AnggotaPage() {
           <ChevronLeft className="h-4 w-4" /> Profil
         </Link>
         <div className="flex items-center justify-between gap-2 mt-2">
-          <h1 className="text-[26px] font-bold tracking-tight leading-tight">Anggota</h1>
+          <h1 className="text-[26px] font-bold tracking-tight leading-tight">
+            Anggota{" "}
+            <span className="text-sm font-medium text-muted-foreground tabular-nums">{members.length} orang</span>
+          </h1>
           <Button size="sm" className="rounded-full shrink-0" onClick={() => setInviteOpen(true)}>
-            <Link2 className="h-4 w-4 mr-1.5" /> Undang anggota
+            <Link2 className="h-4 w-4 mr-1.5" /> Undang
           </Button>
         </div>
-        <p className="text-sm text-muted-foreground mt-1">{members.length} orang dalam keluarga ini.</p>
       </div>
 
       {msg && <Toast kind="success" message={msg} />}
 
-      <Card className="rounded-[20px] p-2">
-        <ul className="divide-y divide-border/60">
-          {members.map((p) => (
-            <li key={p.id} className="flex items-center gap-1 p-1.5">
-              <Link
-                href={`/keluarga/anggota/${p.id}`}
-                aria-label={`Lihat progres ${p.name}`}
-                className="flex-1 min-w-0 flex items-center gap-3 rounded-2xl p-2 hover:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <div className="h-11 w-11 rounded-2xl bg-[var(--primary-soft)] flex items-center justify-center font-bold text-primary shrink-0" aria-hidden="true">{p.name[0]?.toUpperCase()}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold truncate">
-                    {p.name}
-                    {p.id === myId && (
-                      <span className="ml-2 text-[10px] font-semibold text-primary bg-[var(--primary-soft)] px-2 py-0.5 rounded-full align-middle">Saya</span>
-                    )}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">{roleLabel[p.role] ?? "Anggota"}</div>
-                </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
-              </Link>
-              {p.role !== "OWNER" && (
-                <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0" onClick={() => setRemoveTarget({ id: p.id, name: p.name })} aria-label={`Keluarkan ${p.name} dari keluarga`}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      </Card>
+      {managers.length > 0 && (
+        <section aria-label="Pengelola">
+          <h2 className="font-semibold text-sm mb-2 flex items-center gap-2">
+            Pengelola
+            <span className="text-[11px] font-medium text-muted-foreground tabular-nums">{managers.length}</span>
+          </h2>
+          <Card className="rounded-[20px] p-2">
+            <ul className="divide-y divide-border/60">{managers.map(renderRow)}</ul>
+          </Card>
+          <p className="text-[11px] text-muted-foreground leading-5 mt-2">Pengelola bisa mengatur amalan dan undangan. Ketuk titik-tiga untuk izin kelola.</p>
+        </section>
+      )}
+
+      {plainMembers.length > 0 && (
+        <section aria-label="Anggota">
+          <h2 className="font-semibold text-sm mb-2 flex items-center gap-2">
+            Anggota
+            <span className="text-[11px] font-medium text-muted-foreground tabular-nums">{plainMembers.length}</span>
+          </h2>
+          <Card className="rounded-[20px] p-2">
+            <ul className="divide-y divide-border/60">{plainMembers.map(renderRow)}</ul>
+          </Card>
+        </section>
+      )}
       <p className="text-xs text-muted-foreground leading-5">Satu kode untuk satu orang, berlaku 7 hari. Kode yang sudah dipakai hilang sendiri dari daftar.</p>
 
       {inviteOpen && (
@@ -222,6 +295,68 @@ export default function AnggotaPage() {
             <Button variant="secondary" className="w-full rounded-full min-h-[44px] mt-3" onClick={handleCreateInvite} disabled={inviteLoading}>
               {inviteLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" /> : <Link2 className="h-4 w-4 mr-1.5" aria-hidden="true" />} Buat kode baru
             </Button>
+          </div>
+        </Sheet>
+      )}
+
+      {/* Menu tiap anggota — izin kelola + keluarkan dalam satu tempat */}
+      {menuTarget && (
+        <Sheet label={`Opsi untuk ${menuTarget.name}`} onClose={() => setMenuTarget(null)}>
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-11 rounded-2xl bg-[var(--primary-soft)] flex items-center justify-center font-bold text-primary shrink-0" aria-hidden="true">
+              {menuTarget.name[0]?.toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-[15px] truncate">{menuTarget.name}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{roleLabel[menuTarget.role] ?? "Anggota"}</div>
+            </div>
+          </div>
+          <div className="mt-4 space-y-2">
+            {myRole === "OWNER" && menuTarget.role !== "OWNER" && (
+              <button
+                type="button"
+                onClick={() => void handleToggleManage(menuTarget.id, menuTarget.name, menuTarget.canManage)}
+                disabled={togglingId === menuTarget.id}
+                aria-pressed={menuTarget.canManage}
+                className="w-full flex items-center gap-3 rounded-2xl border p-3.5 text-left transition-colors min-h-[56px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              >
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-medium">Bisa kelola amalan</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">Buat, ubah, dan hapus target harian</span>
+                </span>
+                <span aria-hidden="true" className={`shrink-0 w-11 h-6 rounded-full p-0.5 transition-colors ${menuTarget.canManage ? "bg-primary" : "bg-black/15"}`}>
+                  <span className={`block h-5 w-5 rounded-full bg-white shadow transition-transform ${menuTarget.canManage ? "translate-x-5" : ""}`} />
+                </span>
+              </button>
+            )}
+            {myRole === "OWNER" && menuTarget.role !== "OWNER" && (
+              <button
+                type="button"
+                onClick={() => void handleToggleView(menuTarget.id, menuTarget.name, menuTarget.canView)}
+                disabled={togglingId === menuTarget.id}
+                aria-pressed={menuTarget.canView}
+                className="w-full flex items-center gap-3 rounded-2xl border p-3.5 text-left transition-colors min-h-[56px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              >
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-medium">Bisa lihat ringkasan</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">Daftar anggota, kabar, dan grafik mingguan</span>
+                </span>
+                <span aria-hidden="true" className={`shrink-0 w-11 h-6 rounded-full p-0.5 transition-colors ${menuTarget.canView ? "bg-primary" : "bg-black/15"}`}>
+                  <span className={`block h-5 w-5 rounded-full bg-white shadow transition-transform ${menuTarget.canView ? "translate-x-5" : ""}`} />
+                </span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => { setMenuTarget(null); setRemoveTarget({ id: menuTarget.id, name: menuTarget.name }); }}
+              className="w-full flex items-center gap-3 rounded-2xl border border-red-200 p-3.5 text-left text-red-700 hover:bg-red-50 transition-colors min-h-[56px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Trash2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>
+                <span className="block text-sm font-medium">Keluarkan dari keluarga</span>
+                <span className="block text-xs opacity-80 mt-0.5">Riwayat yang sudah terisi tetap tersimpan</span>
+              </span>
+            </button>
           </div>
         </Sheet>
       )}

@@ -6,7 +6,7 @@ import { ProgressRing } from "@/components/app/progress-ring";
 import { Flame, ChevronRight, CheckCircle2, Users, Sparkles, TrendingUp, TrendingDown, Bell, Quote } from "@/components/ui/hugeicons";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { dailyProgress, isStreakDay } from "@/lib/progress";
+import { dailyProgress, isStreakDay, calcStreak } from "@/lib/progress";
 import type { Entry } from "@/lib/habits";
 import { daysAgoLocal, localDateKey } from "@/lib/local-date";
 import { useLocalDayKey } from "@/hooks/use-local-day-key";
@@ -22,6 +22,7 @@ export default function BerandaPage() {
   const [userName, setUserName] = useState("Ayah");
   const [selfDelta, setSelfDelta] = useState<number | null>(null);
   const [selfActive, setSelfActive] = useState(0);
+  const [canView, setCanView] = useState(false);
   type Quote = { userId: string; name: string; isMine: boolean; date: string; label: string; text: string };
   const [slide, setSlide] = useState<{ list: Quote[]; idx: number }>({ list: [], idx: 0 });
   const [members, setMembers] = useState<{ id: string; name: string; progress: number; streak: number; role: string }[]>([]);
@@ -73,7 +74,66 @@ export default function BerandaPage() {
       const ctx = await getFamilyContext(supabase, user.id);
       if (!ctx) { setLoading(false); return; }
       setRole(ctx.role);
+      setCanView(ctx.canViewFamily);
       setMyHabits(ctx.habits);
+      // Anggota berizin lihat ringkasan: ambil paket RPC (tanpa nilai mentah),
+      // bukan query langsung yang pasti terblokir RLS.
+      if (ctx.role === "MEMBER" && ctx.canViewFamily) {
+        try {
+          const { data: ov, error: ovErr } = await supabase.rpc("get_family_overview");
+          if (ovErr) throw new Error(ovErr.message);
+          const overview = ov as {
+            members: { id: string; name: string; today: number; series: number[] }[];
+            recent: { name: string; habit: string; status: string; context: string | null; completed_at: string | null }[];
+          };
+          const stats = overview.members.map((m) => ({
+            id: m.id,
+            name: m.name,
+            progress: m.today,
+            streak: calcStreak(m.series ?? []),
+            role: "",
+          }));
+          setMembers(stats);
+          setFamilyProgress(stats.length ? Math.round(stats.reduce((a, m) => a + m.progress, 0) / stats.length) : 0);
+          setDelta(null);
+          const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+          const weekDays = dayNames.map((_, di) => {
+            const idx = 23 + di;
+            const vals = stats.map((_, si) => overview.members[si]?.series?.[idx] ?? 0);
+            return {
+              day: dayNames[daysAgoLocal(6 - di, now).getDay()],
+              value: vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 0,
+            };
+          });
+          setWeekly(weekDays);
+          const recentList = overview.recent.map((r) => {
+            const time = r.completed_at ? new Date(r.completed_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "";
+            if (r.status === "COMPLETED") return { name: r.name, act: r.context === "BERJAMAAH" ? `${r.habit} — berjamaah di masjid, alhamdulillah` : `${r.habit} selesai, alhamdulillah`, time, type: "completed" as const };
+            if (r.status === "PARTIAL") return { name: r.name, act: `${r.habit} sebagian terisi`, time, type: "pending" as const };
+            return { name: r.name, act: `${r.habit} menunggu diisi`, time, type: "pending" as const };
+          });
+          setRecent(recentList);
+          const selfSeries = overview.members.find((m) => m.id === user.id)?.series ?? [];
+          setSelfDelta(null);
+          setSelfActive(selfSeries.slice(-7).filter((v) => v > 0).length);
+          const { data: mine } = await supabase
+            .from("mutabaah_entries")
+            .select("habit_id,value,status,context")
+            .eq("family_id", ctx.familyId)
+            .eq("user_id", user.id)
+            .eq("date", today);
+          const myMap: Record<string, Entry> = {};
+          ((mine ?? []) as EntryRow[]).forEach((e) => {
+            myMap[e.habit_id] = { habitId: e.habit_id, value: Number(e.value), status: e.status, context: e.context ?? null };
+          });
+          setMyEntries(myMap);
+          setLoading(false);
+          return;
+        } catch {
+          // RPC gagal (mis. migrasi 013 belum jalan) → mode sendiri seperti biasa.
+          setCanView(false);
+        }
+      }
       const familyMembers = ctx.members.map((m) => ({ user_id: m.user_id, role: m.role }));
       const userIds = ctx.members.map((m) => m.user_id);
       if (userIds.length === 0) { setLoading(false); return; }
@@ -235,11 +295,12 @@ export default function BerandaPage() {
   const filledCount = members.filter((m) => m.progress >= 70).length;
   const waitingCount = members.length - filledCount;
   const isMemberOnly = role === "MEMBER";
+  const familyMode = !isMemberOnly || canView;
   const self = members.find((m) => userId != null && m.id === userId) ?? members.find((m) => m.name === userName) ?? members[0];
-  const heroValue = isMemberOnly ? self.progress : familyProgress;
-  const heroStreak = isMemberOnly ? self.streak : Math.max(...members.map((m) => m.streak), 0);
-  const deltaView = isMemberOnly ? selfDelta : delta;
-  const activeView = isMemberOnly ? selfActive : activeDays;
+  const heroValue = familyMode ? familyProgress : self.progress;
+  const heroStreak = familyMode ? Math.max(...members.map((m) => m.streak), 0) : self.streak;
+  const deltaView = familyMode ? delta : selfDelta;
+  const activeView = familyMode ? activeDays : selfActive;
 
   const remainingMine = myHabits.filter((h) => (myEntries[h.id]?.status ?? "PENDING") !== "COMPLETED").length;
 
@@ -252,13 +313,13 @@ export default function BerandaPage() {
           {greeting}, {userName}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          {isMemberOnly
-            ? self.progress >= 70
-              ? "Alhamdulillah, sudah selesai hari ini."
-              : "Satu ketukan kecil hari ini sudah cukup."
-            : waitingCount === 0
+          {familyMode
+            ? waitingCount === 0
               ? "Alhamdulillah, semua sudah mengisi."
-              : `Tinggal ${waitingCount} belum mengisi.`}
+              : `Tinggal ${waitingCount} belum mengisi.`
+            : self.progress >= 70
+              ? "Alhamdulillah, sudah selesai hari ini."
+              : "Satu ketukan kecil hari ini sudah cukup."}
         </p>
       </section>
 
@@ -277,7 +338,7 @@ export default function BerandaPage() {
             labelClassName="text-white/60"
           />
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold tracking-widest uppercase text-white/60">{isMemberOnly ? "Perjalananmu hari ini" : "Perjalanan keluarga hari ini"}</p>
+            <p className="text-xs font-semibold tracking-widest uppercase text-white/60">{familyMode ? "Perjalanan keluarga hari ini" : "Perjalananmu hari ini"}</p>
             <div className="flex items-center gap-2 mt-1.5">
               <span className="text-[30px] font-bold leading-none text-white tabular-nums">{heroValue}%</span>
               {deltaView !== null && deltaView !== 0 && (
@@ -291,9 +352,9 @@ export default function BerandaPage() {
                 ? "Naik dari kemarin, alhamdulillah."
                 : deltaView !== null && deltaView < 0
                   ? "Sedikit di bawah kemarin — hari ini kesempatan baru."
-                  : isMemberOnly
-                    ? "Dibandingkan dengan dirimu kemarin."
-                    : `${filledCount} dari ${members.length} anggota sudah mengisi.`}
+                  : familyMode
+                    ? `${filledCount} dari ${members.length} anggota sudah mengisi.`
+                    : "Dibandingkan dengan dirimu kemarin."}
             </p>
           </div>
         </div>
@@ -318,7 +379,7 @@ export default function BerandaPage() {
             )}
           </div>
           <div>
-            {isMemberOnly ? (
+            {!familyMode ? (
               <>
                 <dt className="text-[11px] text-white/60">Tersisa</dt>
                 <dd className="font-bold text-white mt-0.5 tabular-nums">{remainingMine} target</dd>
@@ -368,8 +429,8 @@ export default function BerandaPage() {
         </section>
       )}
 
-      {/* Anggota & kabar — hanya untuk orang tua; anak hanya melihat miliknya sendiri */}
-      {!isMemberOnly && (
+      {/* Anggota & kabar — pengelola selalu; anggota bila diberi izin lihat ringkasan */}
+      {familyMode && (
         <>
       {/* Anggota — daftar ringkas dalam satu kartu */}
       <section aria-label="Anggota keluarga">
@@ -385,27 +446,38 @@ export default function BerandaPage() {
           <ul className="divide-y divide-border/60">
             {members.map((m) => {
               const done = m.progress >= 70;
+              const inner = (
+                <>
+                  <span className="h-10 w-10 rounded-xl bg-[var(--primary-soft)] flex items-center justify-center font-bold text-primary text-sm shrink-0" aria-hidden="true">
+                    {m.name.slice(0, 2).toUpperCase()}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block font-medium text-sm leading-none truncate">{m.name}</span>
+                    <span className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className={`h-1.5 w-1.5 rounded-full ${done ? "bg-emerald-500" : "bg-amber-500"}`} aria-hidden="true" />
+                      {done ? "Sudah mengisi" : "Belum mengisi"}
+                      {showStreak && m.streak > 0 ? ` · ${m.streak} hari` : ""}
+                    </span>
+                  </span>
+                  <span className={`text-sm font-bold tabular-nums ${done ? "text-primary" : "text-muted-foreground"}`}>{m.progress}%</span>
+                  {!isMemberOnly && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />}
+                </>
+              );
               return (
                 <li key={m.id}>
-                  <Link
-                    href={`/keluarga/anggota/${m.id}`}
-                    aria-label={`Lihat progres ${m.name}, ${m.progress} persen terisi`}
-                    className="flex items-center gap-3 p-3 rounded-2xl hover:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <span className="h-10 w-10 rounded-xl bg-[var(--primary-soft)] flex items-center justify-center font-bold text-primary text-sm shrink-0" aria-hidden="true">
-                      {m.name.slice(0, 2).toUpperCase()}
-                    </span>
-                    <span className="flex-1 min-w-0">
-                      <span className="block font-medium text-sm leading-none truncate">{m.name}</span>
-                      <span className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <span className={`h-1.5 w-1.5 rounded-full ${done ? "bg-emerald-500" : "bg-amber-500"}`} aria-hidden="true" />
-                        {done ? "Sudah mengisi" : "Belum mengisi"}
-                        {showStreak && m.streak > 0 ? ` · ${m.streak} hari` : ""}
-                      </span>
-                    </span>
-                    <span className={`text-sm font-bold tabular-nums ${done ? "text-primary" : "text-muted-foreground"}`}>{m.progress}%</span>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
-                  </Link>
+                  {!isMemberOnly ? (
+                    <Link
+                      href={`/keluarga/anggota/${m.id}`}
+                      aria-label={`Lihat progres ${m.name}, ${m.progress} persen terisi`}
+                      className="flex items-center gap-3 p-3 rounded-2xl hover:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {inner}
+                    </Link>
+                  ) : (
+                    <div className="flex items-center gap-3 p-3 rounded-2xl" aria-label={`${m.name}, ${m.progress} persen terisi`}>
+                      {inner}
+                    </div>
+                  )}
                 </li>
               );
             })}
@@ -509,7 +581,7 @@ export default function BerandaPage() {
         </>
       )}
 
-      {isMemberOnly && (
+      {isMemberOnly && !canView && (
         <Card className="rounded-[20px] p-5">
           <h2 className="font-semibold text-sm">Hari ini, satu langkah</h2>
           <p className="text-xs text-muted-foreground mt-1 leading-5">

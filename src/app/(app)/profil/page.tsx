@@ -336,8 +336,9 @@ export default function ProfilPage() {
           <Bell className="h-4 w-4 text-primary" aria-hidden="true" /> Pengingat harian
         </h2>
         <Card className="rounded-[20px] p-5">
-          <div className="mt-4 space-y-4">
-            <div className="flex items-center justify-between gap-3 rounded-2xl border p-3.5 min-h-[44px]">
+          <div className="space-y-2">
+            <div className="flex items-center gap-3 rounded-2xl p-1">
+              <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${perm === "granted" ? "bg-emerald-500" : perm === "denied" ? "bg-red-500" : "bg-amber-500"}`} aria-hidden="true" />
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-medium">Notifikasi perangkat</span>
                 <span className="block text-[11px] text-muted-foreground mt-0.5">
@@ -347,7 +348,7 @@ export default function ProfilPage() {
                       ? "Diblokir — aktifkan lewat pengaturan browser."
                       : perm === "unsupported"
                         ? "Browser ini tidak mendukung notifikasi."
-                        : "Belum diminta — perlu izin browser."}
+                        : "Perlu izin browser untuk berbunyi."}
                 </span>
               </span>
               {perm !== "granted" && perm !== "unsupported" && (
@@ -356,20 +357,33 @@ export default function ProfilPage() {
                 </Button>
               )}
             </div>
-            <label className="flex items-center justify-between gap-3 rounded-2xl border p-3.5 cursor-pointer hover:border-primary/15 transition-colors min-h-[44px]">
-              <span className="text-sm font-medium">Aktifkan pengingat</span>
-              <input type="checkbox" checked={notif.enabled} onChange={(e) => setNotif({ ...notif, enabled: e.target.checked })} className="h-5 w-5 shrink-0 accent-[var(--primary)]" />
+            <label className="flex items-center gap-3 rounded-2xl p-1 cursor-pointer min-h-[44px]">
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-medium">Ingatkan saya</span>
+                <span className="block text-[11px] text-muted-foreground mt-0.5">Hanya bila mutabaah belum terisi.</span>
+              </span>
+              <input type="checkbox" checked={notif.enabled} onChange={(e) => setNotif({ ...notif, enabled: e.target.checked })} aria-label="Ingatkan saya" className="h-5 w-5 shrink-0 accent-[var(--primary)]" />
             </label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="rounded-2xl border p-3.5 hover:border-primary/15 transition-colors">
-                <span className="text-xs font-semibold flex items-center gap-1.5"><Sun className="h-3.5 w-3.5 text-amber-500" aria-hidden="true" /> Pagi</span>
-                <input type="time" value={notif.morning} onChange={(e) => setNotif({ ...notif, morning: e.target.value })} aria-label="Jam pengingat pagi" className="mt-2 w-full rounded-xl border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-                <span className="block text-[11px] text-muted-foreground mt-1.5">Jangan lupa mutabaah pagi</span>
+            <div className="divide-y divide-border/60 border-t border-b border-border/60">
+              <label className="flex items-center gap-3 py-3">
+                <span className="h-9 w-9 rounded-xl bg-amber-50 flex items-center justify-center shrink-0" aria-hidden="true">
+                  <Sun className="h-4 w-4 text-amber-500" />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-medium">Pagi</span>
+                  <span className="block text-[11px] text-muted-foreground mt-0.5">Jangan lupa mutabaah pagi</span>
+                </span>
+                <input type="time" value={notif.morning} onChange={(e) => setNotif({ ...notif, morning: e.target.value })} aria-label="Jam pengingat pagi" className="shrink-0 rounded-xl border bg-card px-2.5 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-ring" />
               </label>
-              <label className="rounded-2xl border p-3.5 hover:border-primary/15 transition-colors">
-                <span className="text-xs font-semibold flex items-center gap-1.5"><Moon className="h-3.5 w-3.5 text-indigo-500" aria-hidden="true" /> Malam</span>
-                <input type="time" value={notif.evening} onChange={(e) => setNotif({ ...notif, evening: e.target.value })} aria-label="Jam pengingat malam" className="mt-2 w-full rounded-xl border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-                <span className="block text-[11px] text-muted-foreground mt-1.5">Sudah mengisi hari ini?</span>
+              <label className="flex items-center gap-3 py-3">
+                <span className="h-9 w-9 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0" aria-hidden="true">
+                  <Moon className="h-4 w-4 text-indigo-500" />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-medium">Malam</span>
+                  <span className="block text-[11px] text-muted-foreground mt-0.5">Sudah mengisi hari ini?</span>
+                </span>
+                <input type="time" value={notif.evening} onChange={(e) => setNotif({ ...notif, evening: e.target.value })} aria-label="Jam pengingat malam" className="shrink-0 rounded-xl border bg-card px-2.5 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-ring" />
               </label>
             </div>
             <Button onClick={saveNotif} disabled={saving || !user} className="rounded-full w-full min-h-[44px]">
