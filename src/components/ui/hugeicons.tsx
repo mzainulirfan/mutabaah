@@ -19,6 +19,13 @@ import {
   StickyNote02Icon,
   WifiOff01Icon,
   MoreVerticalIcon,
+  Delete02Icon,
+  Loading03Icon,
+  BookOpen02Icon,
+  FavouriteIcon,
+  Target02Icon,
+  ChevronLeftIcon,
+  PencilEdit01Icon,
 } from "@hugeicons/core-free-icons";
 import type { SVGProps } from "react";
 
@@ -48,3 +55,10 @@ export const User = makeIcon(UserIcon);
 export const StickyNote = makeIcon(StickyNote02Icon);
 export const WifiOff = makeIcon(WifiOff01Icon);
 export const MoreVertical = makeIcon(MoreVerticalIcon);
+export const Trash2 = makeIcon(Delete02Icon);
+export const Loader2 = makeIcon(Loading03Icon);
+export const BookOpen = makeIcon(BookOpen02Icon);
+export const Heart = makeIcon(FavouriteIcon);
+export const Target = makeIcon(Target02Icon);
+export const ChevronLeft = makeIcon(ChevronLeftIcon);
+export const Pencil = makeIcon(PencilEdit01Icon);
