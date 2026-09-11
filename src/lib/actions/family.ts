@@ -81,6 +81,30 @@ export async function acceptInvitationByCode(code: string) {
   return { familyId: data as string };
 }
 
+export async function setManagePermission(familyId: string, userId: string, allowed: boolean) {
+  const supabase = await createClient();
+  if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
+  const { error } = await supabase.rpc("set_manage_permission", {
+    p_family_id: familyId,
+    p_user_id: userId,
+    p_allowed: allowed,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/keluarga");
+}
+
+export async function setViewPermission(familyId: string, userId: string, allowed: boolean) {
+  const supabase = await createClient();
+  if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
+  const { error } = await supabase.rpc("set_view_permission", {
+    p_family_id: familyId,
+    p_user_id: userId,
+    p_allowed: allowed,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/keluarga");
+}
+
 export async function removeFamilyMember(familyId: string, userId: string) {
   const supabase = await createClient();
   if (!supabase) throw new Error("Supabase tidak terkonfigurasi");

@@ -19,7 +19,7 @@ export type EntryRow = {
 
 export type MemberLinkRow = { family_id: string; role: string };
 export type FamilyNameRow = { name: string };
-export type FamilyMemberRow = { user_id: string; role: string };
+export type FamilyMemberRow = { user_id: string; role: string; can_manage_habits?: boolean | null; can_view_family?: boolean | null };
 export type ProfileRow = { id: string; name: string };
 export type HabitListRow = {
   id: string;

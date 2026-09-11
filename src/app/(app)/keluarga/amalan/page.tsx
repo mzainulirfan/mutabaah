@@ -77,6 +77,15 @@ export default function AmalanPage() {
   const [editForm, setEditForm] = useState({ name: "", category: "Ibadah Wajib", target: 1, unit: "", is_active: true });
   const [savingEdit, setSavingEdit] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [canManage, setCanManage] = useState(false);
+
+  function friendlyHabitError(e: unknown) {
+    const m = getErrorMessage(e);
+    if (/row-level security|policy|permission denied|not allowed|violates/i.test(m)) {
+      return "Kamu belum punya izin kelola amalan. Minta pemilik memberi izin.";
+    }
+    return m;
+  }
 
   const load = useCallback(async () => {
     const user = await getSessionUser(supabase);
@@ -84,6 +93,7 @@ export default function AmalanPage() {
     const family = await getFamilyContext(supabase, user.id);
     if (!family) { setLoading(false); return; }
     setFamilyId(family.familyId);
+    setCanManage(family.canManageHabits);
     const { data: habitRows } = await supabase.from("mutabaah_habits").select("id,name,category,type,target_value,unit,is_active").eq("family_id", family.familyId).order("sort_order");
     setHabits((habitRows ?? []) as HabitRow[]);
     setLoading(false);
@@ -122,7 +132,7 @@ export default function AmalanPage() {
       setHabitOpen(false);
       setMsg(`Amalan "${newHabit.name.trim()}" tersimpan. Silakan isi mulai hari ini.`);
       load();
-    } catch (e: unknown) { setMsg(getErrorMessage(e)); } finally { setAdding(false); }
+    } catch (e: unknown) { setMsg(friendlyHabitError(e)); } finally { setAdding(false); }
   };
 
   const handleDeleteHabit = async (id: string, name: string) => {
@@ -134,7 +144,7 @@ export default function AmalanPage() {
       setHabits((prev) => prev.filter((h) => h.id !== id));
       setManageHabit(null);
       setMsg(`"${name}" dihapus.`);
-    } catch (e: unknown) { setMsg(getErrorMessage(e)); }
+    } catch (e: unknown) { setMsg(friendlyHabitError(e)); }
   };
 
   const handleToggleActive = async (h: HabitRow) => {
@@ -146,7 +156,7 @@ export default function AmalanPage() {
       setHabits((prev) => prev.map((x) => (x.id === h.id ? next : x)));
       setManageHabit((prev) => (prev?.id === h.id ? next : prev));
       setMsg(next.is_active ? `"${h.name}" ditampilkan lagi di mutabaah harian.` : `"${h.name}" dijeda — tidak muncul di mutabaah harian.`);
-    } catch (e: unknown) { setMsg(getErrorMessage(e)); }
+    } catch (e: unknown) { setMsg(friendlyHabitError(e)); }
   };
 
   const openEdit = (h: HabitRow) => {
@@ -175,7 +185,7 @@ export default function AmalanPage() {
       setManageHabit((prev) => (prev ? { ...prev, ...nextFields } : prev));
       setEditing(false);
       setMsg(`Perubahan "${editForm.name.trim()}" tersimpan.`);
-    } catch (e: unknown) { setMsg(getErrorMessage(e)); } finally { setSavingEdit(false); }
+    } catch (e: unknown) { setMsg(friendlyHabitError(e)); } finally { setSavingEdit(false); }
   };
 
   const handleApplyTemplate = async (key: string) => {
@@ -210,11 +220,16 @@ export default function AmalanPage() {
         </Link>
         <div className="flex items-center justify-between gap-2 mt-2">
           <h1 className="text-[26px] font-bold tracking-tight leading-tight">Amalan</h1>
-          <Button size="sm" className="rounded-full shrink-0" onClick={() => setHabitOpen(true)}>
-            <Plus className="h-4 w-4 mr-1.5" /> Buat amalan
-          </Button>
+          {canManage && (
+            <Button size="sm" className="rounded-full shrink-0" onClick={() => setHabitOpen(true)}>
+              <Plus className="h-4 w-4 mr-1.5" /> Buat amalan
+            </Button>
+          )}
         </div>
-        <p className="text-sm text-muted-foreground mt-1">{habits.filter((h) => h.is_active).length} aktif dari {habits.length} amalan.</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          {habits.filter((h) => h.is_active).length} aktif dari {habits.length} amalan.
+          {!canManage && " Minta pemilik memberi izin kelola untuk mengubah."}
+        </p>
       </div>
 
       {msg && <div className="rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-2.5 text-sm text-emerald-800 flex items-center gap-2" role="status"><Check className="h-4 w-4 shrink-0" /> {msg}</div>}
@@ -222,29 +237,36 @@ export default function AmalanPage() {
       <Card className="rounded-[20px] p-5">
         {habits.length === 0 ? (
           <div>
-            <p className="text-sm font-medium">Mulai dari contoh, yuk</p>
-            <p className="text-xs text-muted-foreground mt-1">Pilih satu paket di bawah, nanti tetap bisa diubah.</p>
-            <div className="mt-3 grid gap-2">
-              {templateMeta.map((t) => (
-                <button key={t.key} onClick={() => handleApplyTemplate(t.key)} className="text-left rounded-2xl border p-3.5 hover:border-primary/20 hover:bg-[var(--primary-soft)]/40 transition-colors flex gap-3 min-h-[44px]">
-                  <t.icon className="h-5 w-5 text-primary mt-0.5 shrink-0" />
-                  <div>
-                    <div className="text-sm font-semibold">Paket {t.title}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5 leading-5">{t.desc}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
+            <p className="text-sm font-medium">Belum ada amalan</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {canManage ? "Mulai dari contoh di bawah, nanti tetap bisa diubah." : "Belum ada target di keluarga ini."}
+            </p>
+            {canManage && (
+              <div className="mt-3 grid gap-2">
+                {templateMeta.map((t) => (
+                  <button key={t.key} onClick={() => handleApplyTemplate(t.key)} className="text-left rounded-2xl border p-3.5 hover:border-primary/20 hover:bg-[var(--primary-soft)]/40 transition-colors flex gap-3 min-h-[44px]">
+                    <t.icon className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                    <div>
+                      <div className="text-sm font-semibold">Paket {t.title}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5 leading-5">{t.desc}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <>
             <div className="space-y-2">
               {habits.map((h) => (
-                <button
+                <div
                   key={h.id}
-                  onClick={() => { setManageHabit(h); setEditing(false); }}
-                  aria-label={`Kelola ${h.name}`}
-                  className={`w-full flex items-center gap-3 rounded-2xl border p-3 text-left transition-colors min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${!h.is_active ? "opacity-70 bg-muted/30" : "hover:border-primary/20 hover:bg-muted/40"}`}
+                  role={canManage ? "button" : undefined}
+                  tabIndex={canManage ? 0 : undefined}
+                  onClick={canManage ? () => { setManageHabit(h); setEditing(false); } : undefined}
+                  onKeyDown={canManage ? (e) => { if (e.target !== e.currentTarget) return; if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setManageHabit(h); setEditing(false); } } : undefined}
+                  aria-label={canManage ? `Kelola ${h.name}` : undefined}
+                  className={`w-full flex items-center gap-3 rounded-2xl border p-3 text-left transition-colors min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${!h.is_active ? "opacity-70 bg-muted/30" : canManage ? "hover:border-primary/20 hover:bg-muted/40 cursor-pointer" : ""}`}
                 >
                   <div className={`h-9 w-9 rounded-xl flex items-center justify-center shrink-0 ${h.category === "Ibadah Wajib" ? "bg-emerald-50 text-emerald-600" : h.category === "Al-Qur'an" ? "bg-sky-50 text-sky-600" : "bg-muted text-muted-foreground"}`}>
                     {h.category === "Ibadah Wajib" ? <Heart className="h-4 w-4" /> : h.category === "Al-Qur'an" ? <BookOpen className="h-4 w-4" /> : <Target className="h-4 w-4" />}
@@ -257,30 +279,32 @@ export default function AmalanPage() {
                       <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${h.is_active ? "bg-primary" : "bg-muted-foreground"}`} /> {h.category} • {typeLabel(h.type)}{h.type !== "BOOLEAN" ? ` • ${habitTargetText(h)}` : ""}
                     </div>
                   </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
-                </button>
+                  {canManage && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />}
+                </div>
               ))}
             </div>
-            <details className="mt-4 rounded-2xl border p-4">
-              <summary className="text-sm font-medium cursor-pointer">Mulai dari contoh</summary>
-              <p className="text-xs text-muted-foreground mt-1">Yang sudah ada tidak akan diduplikasi.</p>
-              <div className="mt-3 grid gap-2">
-                {templateMeta.map((t) => (
-                  <button key={t.key} onClick={() => handleApplyTemplate(t.key)} className="text-left rounded-2xl border p-3.5 hover:border-primary/20 hover:bg-[var(--primary-soft)]/40 transition-colors flex gap-3 min-h-[44px]">
-                    <t.icon className="h-5 w-5 text-primary mt-0.5 shrink-0" />
-                    <div>
-                      <div className="text-sm font-semibold">Paket {t.title}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5 leading-5">{t.desc}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </details>
+            {canManage && (
+              <details className="mt-4 rounded-2xl border p-4">
+                <summary className="text-sm font-medium cursor-pointer">Mulai dari contoh</summary>
+                <p className="text-xs text-muted-foreground mt-1">Yang sudah ada tidak akan diduplikasi.</p>
+                <div className="mt-3 grid gap-2">
+                  {templateMeta.map((t) => (
+                    <button key={t.key} onClick={() => handleApplyTemplate(t.key)} className="text-left rounded-2xl border p-3.5 hover:border-primary/20 hover:bg-[var(--primary-soft)]/40 transition-colors flex gap-3 min-h-[44px]">
+                      <t.icon className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                      <div>
+                        <div className="text-sm font-semibold">Paket {t.title}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5 leading-5">{t.desc}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </details>
+            )}
           </>
         )}
       </Card>
 
-      {manageHabit && (
+      {manageHabit && canManage && (
         <Sheet label={`Kelola ${manageHabit.name}`} onClose={() => setManageHabit(null)}>
           <div className="flex items-center justify-between gap-2">
               <h3 className="font-bold truncate">{editing ? "Ubah amalan" : manageHabit.name}</h3>
