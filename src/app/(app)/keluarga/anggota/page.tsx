@@ -48,8 +48,24 @@ export default function AnggotaPage() {
     }
   };
 
-  const handleToggleManage = async (id: string, name: string, current: boolean) => {
+  const handleSetRole = async (id: string, name: string, role: "PARENT" | "MEMBER") => {
     if (!familyId || togglingId) return;
+    setTogglingId(id);
+    try {
+      const { setMemberRole } = await import("@/lib/actions/family");
+      await setMemberRole(familyId, id, role);
+      clearFamilyCache();
+      setMembers((prev) => prev.map((x) => (x.id === id ? { ...x, role } : x)));
+      setMenuTarget((prev) => (prev && prev.id === id ? { ...prev, role } : prev));
+      setMsg(role === "PARENT" ? `${name} kini orang tua — bisa mengelola keluarga.` : `${name} kembali menjadi anggota biasa.`);
+    } catch (e: unknown) {
+      setMsg(getErrorMessage(e));
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  const handleToggleManage = async (id: string, name: string, current: boolean) => {    if (!familyId || togglingId) return;
     setTogglingId(id);
     try {
       const { setManagePermission } = await import("@/lib/actions/family");
@@ -312,6 +328,26 @@ export default function AnggotaPage() {
             </div>
           </div>
           <div className="mt-4 space-y-2">
+            {myRole === "OWNER" && menuTarget.role !== "OWNER" && (
+              <div>
+                <div className="text-xs font-semibold mb-1.5">Peran</div>
+                <div className="flex gap-1 rounded-full bg-muted p-1" role="group" aria-label={`Peran ${menuTarget.name}`}>
+                  {(["MEMBER", "PARENT"] as const).map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => void handleSetRole(menuTarget.id, menuTarget.name, r)}
+                      disabled={togglingId === menuTarget.id}
+                      aria-pressed={menuTarget.role === r}
+                      className={`flex-1 rounded-full px-3 py-2 min-h-[40px] text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${menuTarget.role === r ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      {r === "PARENT" ? "Orang tua" : "Anggota"}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-5 mt-1.5">Orang tua bisa mengatur amalan, undangan, dan melihat semua progres.</p>
+              </div>
+            )}
             {myRole === "OWNER" && menuTarget.role !== "OWNER" && (
               <button
                 type="button"

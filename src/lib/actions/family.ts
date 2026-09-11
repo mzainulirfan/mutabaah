@@ -93,6 +93,18 @@ export async function setManagePermission(familyId: string, userId: string, allo
   revalidatePath("/keluarga");
 }
 
+export async function setMemberRole(familyId: string, userId: string, role: "PARENT" | "MEMBER") {
+  const supabase = await createClient();
+  if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
+  const { error } = await supabase.rpc("set_member_role", {
+    p_family_id: familyId,
+    p_user_id: userId,
+    p_role: role,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/keluarga");
+}
+
 export async function setViewPermission(familyId: string, userId: string, allowed: boolean) {
   const supabase = await createClient();
   if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
