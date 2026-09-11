@@ -249,9 +249,6 @@ export default function ProfilPage() {
             <div className="flex items-center gap-3">
               <div className="flex-1 min-w-0">
                 <div className="font-semibold truncate">{family}</div>
-                <div className="text-xs text-muted-foreground mt-1 tabular-nums">
-                  {members.length} anggota · {activeHabits} amalan aktif
-                </div>
               </div>
               <div className="flex items-center shrink-0" aria-hidden="false">
                 <div className="flex -space-x-2" aria-hidden="true">

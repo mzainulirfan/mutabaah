@@ -490,7 +490,6 @@ export default function ProgressPage() {
           </p>
           <div className="mt-5 space-y-5">
             {(showAll ? breakdown : breakdown.slice(0, 6)).map((h) => {
-              const status = h.pct >= 80 ? "Terjaga" : h.pct >= 50 ? "Bertumbuh" : "Baru dimulai";
               const tone =
                 h.pct >= 80
                   ? { badge: "bg-[var(--primary-soft)] text-primary" }
@@ -506,13 +505,14 @@ export default function ProgressPage() {
                   className="block w-full text-left rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <div className="flex items-center justify-between gap-2 text-sm">
-                    <span className="font-medium truncate">{h.name}</span>
+                    <span className="font-medium truncate">
+                      {h.name} <span className="font-normal text-muted-foreground">· {h.category}</span>
+                    </span>
                     <span className={`font-bold text-xs px-2 py-0.5 rounded-full tabular-nums shrink-0 ${tone.badge}`}>{h.pct}%</span>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{h.category} · {status}</div>
                   <div className="mt-2 flex items-end gap-1" role="img" aria-label={`${h.name} tujuh hari terakhir`}>
                     {(spark[h.id] ?? []).slice(-7).map((v, i) => (
-                      <div key={i} className="flex-1 rounded-full bg-muted overflow-hidden flex items-end" style={{ height: "24px" }}>
+                      <div key={i} className="flex-1 rounded-full bg-muted overflow-hidden flex items-end" style={{ height: "28px" }}>
                         <div
                           className={`w-full rounded-full ${v >= 100 ? "bg-primary" : v > 0 ? "bg-amber-500" : "bg-transparent"}`}
                           style={{ height: v > 0 ? `${Math.max(v, 25)}%` : "0%" }}
