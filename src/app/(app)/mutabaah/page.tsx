@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import type { Entry, HabitCategory } from "@/lib/habits";
+import { displayHabitName } from "@/lib/habits";
 import { HabitCard } from "@/components/app/habit-card";
 import { ProgressRing } from "@/components/app/progress-ring";
 import { Card } from "@/components/ui/card";
@@ -387,7 +388,7 @@ export default function MutabaahPage() {
                 {g.items.map((h) => (
                 <HabitCard
                   key={h.id}
-                  habit={{ id: h.id, name: h.name, category: h.category as HabitCategory, type: h.type, target: h.target_value, unit: h.unit ?? undefined }}
+                  habit={{ id: h.id, name: displayHabitName(h.name, date), category: h.category as HabitCategory, type: h.type, target: h.target_value, unit: h.unit ?? undefined }}
                   entry={entries[h.id]}
                   onToggle={() => handleToggle(h.id)}
                   onUpdateValue={(d) => handleUpdate(h.id, d)}

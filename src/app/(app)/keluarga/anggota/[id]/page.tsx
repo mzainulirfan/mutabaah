@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { ChevronLeft, Flame, TrendingUp, Sprout } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { dailyProgress, calcStreak } from "@/lib/progress";
+import { displayHabitName } from "@/lib/habits";
 import { daysAgoLocal, localDateKey } from "@/lib/local-date";
 import type { EntryRow } from "@/lib/supabase/types";
 import { getFamilyContext, getSessionUser } from "@/lib/family-context";
@@ -80,7 +81,7 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
           const done = value >= target && value > 0;
           return {
             id: h.id,
-            name: h.name,
+            name: displayHabitName(h.name, now),
             category: h.category,
             type: h.type,
             value,

@@ -11,14 +11,10 @@ import { getFamilyContext, getSessionUser } from "@/lib/family-context";
 import { enqueue } from "@/lib/offline-queue";
 import { localDateKey } from "@/lib/local-date";
 import type { Entry, HabitCategory } from "@/lib/habits";
+import { displayHabitName, prayerSlotKey } from "@/lib/habits";
 import type { EntryRow } from "@/lib/supabase/types";
 
 const PRAYER_ORDER = ["subuh", "dzuhur", "ashar", "maghrib", "isya"];
-
-function prayerIndex(name: string) {
-  const n = name.toLowerCase();
-  return PRAYER_ORDER.findIndex((k) => n.includes(k));
-}
 
 type QuickHabit = {
   id: string;
@@ -80,10 +76,11 @@ export function QuickFillFab() {
   }, [hidden, load]);
 
   const upcoming = useMemo(() => {
+    const now = new Date();
     const incomplete = habits.filter((h) => (entries[h.id]?.status ?? "PENDING") !== "COMPLETED");
     const rank = (h: QuickHabit) => {
       if (h.category === "Ibadah Wajib") {
-        const pi = prayerIndex(h.name);
+        const pi = PRAYER_ORDER.indexOf(prayerSlotKey(h.name, now));
         return pi >= 0 ? pi : 99;
       }
       return 100 + h.sort_order;
@@ -184,7 +181,7 @@ export function QuickFillFab() {
               {upcoming.map((h) => (
                 <HabitCard
                   key={h.id}
-                  habit={{ id: h.id, name: h.name, category: h.category as HabitCategory, type: h.type, target: h.target_value, unit: h.unit ?? undefined }}
+                  habit={{ id: h.id, name: displayHabitName(h.name, new Date()), category: h.category as HabitCategory, type: h.type, target: h.target_value, unit: h.unit ?? undefined }}
                   entry={entries[h.id]}
                   onToggle={() => toggle(h.id)}
                   onUpdateValue={(d) => updateValue(h.id, d)}

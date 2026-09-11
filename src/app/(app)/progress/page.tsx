@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Sheet } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";
 import { dailyProgress, isStreakDay, calendarStatus } from "@/lib/progress";
+import { displayHabitName, isFriday, prayerSlotKey } from "@/lib/habits";
 import { daysAgoLocal, localDateKey } from "@/lib/local-date";
 import { useLocalDayKey } from "@/hooks/use-local-day-key";
 import type { EntryRow } from "@/lib/supabase/types";
@@ -168,6 +169,8 @@ export default function ProgressPage() {
       context: "SENDIRI" | "BERJAMAAH" | null;
       status: "done" | "partial" | "todo";
     };
+    const [yy, mm, dd] = iso.split("-").map(Number);
+    const cellDate = new Date(yy, mm - 1, dd);
     const items: DayItem[] = habits.map((h) => {
       const e = dayEntries.find((x) => x.date === iso && x.habit_id === h.id);
       const value = e ? Number(e.value) : 0;
@@ -177,7 +180,7 @@ export default function ProgressPage() {
       const unit = h.unit ?? (h.type === "DURATION" ? "menit" : h.type === "QUANTITY" || h.type === "COUNTER" ? "kali" : "");
       return {
         id: h.id,
-        name: h.name,
+        name: displayHabitName(h.name, cellDate),
         category: h.category,
         type: h.type,
         value,
@@ -189,17 +192,19 @@ export default function ProgressPage() {
     });
     // Strip sholat 5 waktu — urut waktu sholat, bukan urut daftar.
     const PRAYERS = [
-      { key: "subuh", label: "Subuh", match: ["subuh"] },
-      { key: "dzuhur", label: "Dzuhur", match: ["dzuhur", "duhur", "lohor", "zuhur"] },
-      { key: "ashar", label: "Ashar", match: ["ashar", "asar"] },
-      { key: "maghrib", label: "Maghrib", match: ["maghrib"] },
-      { key: "isya", label: "Isya", match: ["isya", "isha"] },
+      { key: "subuh", label: "Subuh" },
+      { key: "dzuhur", label: "Dzuhur" },
+      { key: "ashar", label: "Ashar" },
+      { key: "maghrib", label: "Maghrib" },
+      { key: "isya", label: "Isya" },
     ];
     const used = new Set<string>();
     const strip = PRAYERS.map((p) => {
-      const found = items.find((i) => !used.has(i.id) && i.category === "Ibadah Wajib" && p.match.some((k) => i.name.toLowerCase().includes(k)));
+      const found = items.find((i) => !used.has(i.id) && i.category === "Ibadah Wajib" && prayerSlotKey(i.name, cellDate) === p.key);
       if (found) used.add(found.id);
-      return { ...p, item: found ?? null };
+      // Hari Jumat: slot Dzuhur berlabel Jumat.
+      const label = p.key === "dzuhur" && isFriday(cellDate) ? "Jumat" : p.label;
+      return { ...p, label, item: found ?? null };
     });
     const groups: { category: string; items: DayItem[] }[] = [];
     for (const i of items) {
