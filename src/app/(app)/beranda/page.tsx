@@ -306,21 +306,15 @@ export default function BerandaPage() {
 
   return (
     <div className="space-y-6 pb-6 lg:pb-0 overflow-x-clip">
-      {/* Sapaan — minimal */}
+      {/* Sapaan */}
       <section aria-label="Sapaan">
-        <p className="text-xs text-muted-foreground">{todayLabel}</p>
-        <h1 className="text-[26px] font-bold tracking-tight mt-1 leading-tight">
-          {greeting}, {userName}
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {familyMode
-            ? waitingCount === 0
-              ? "Alhamdulillah, semua sudah mengisi."
-              : `Tinggal ${waitingCount} belum mengisi.`
-            : self.progress >= 70
-              ? "Alhamdulillah, sudah selesai hari ini."
-              : "Satu ketukan kecil hari ini sudah cukup."}
+        <p className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-[11px] font-semibold text-muted-foreground">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+          {todayLabel}
         </p>
+        <h1 className="text-[28px] font-bold tracking-tight mt-2.5 leading-tight">
+          {greeting}, <span className="text-primary">{userName}</span>
+        </h1>
       </section>
 
       {/* Perjalanan hari ini — panel hijau tua, selaras dengan Progress */}

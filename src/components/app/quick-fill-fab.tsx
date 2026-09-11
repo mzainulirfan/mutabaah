@@ -152,11 +152,11 @@ export function QuickFillFab() {
     <>
       <button
         onClick={() => { setOpen(true); setError(null); void load(); }}
-        className="lg:hidden fixed bottom-[88px] right-4 z-20 rounded-full bg-primary text-white shadow-lg px-5 py-3 flex items-center gap-2 font-medium active:scale-95 transition-transform"
+        className="lg:hidden fixed bottom-[88px] right-4 z-20 rounded-full bg-primary text-white shadow-lg px-5 py-3 flex items-center gap-2 font-medium active:scale-95 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         aria-label="Isi mutabaah hari ini"
         aria-haspopup="dialog"
       >
-        <Sparkles className="h-4 w-4" /> Isi Hari Ini
+        <Sparkles className="h-4 w-4" aria-hidden="true" /> Isi Hari Ini
       </button>
 
       {open && (

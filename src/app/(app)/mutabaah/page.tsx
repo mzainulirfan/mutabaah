@@ -1,7 +1,6 @@
 "use client";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import type { Entry, HabitCategory } from "@/lib/habits";
 import { displayHabitName } from "@/lib/habits";
@@ -9,7 +8,7 @@ import { HabitCard } from "@/components/app/habit-card";
 import { ProgressRing } from "@/components/app/progress-ring";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { StickyNote, WifiOff, Sparkles } from "@/components/ui/hugeicons";
+import { StickyNote, WifiOff, Sparkles, Bell, CheckCircle2 } from "@/components/ui/hugeicons";
 import { Sheet } from "@/components/ui/sheet";
 import { enqueue, syncQueue, clearInvalidQueue } from "@/lib/offline-queue";
 import { localDateKey } from "@/lib/local-date";
@@ -311,41 +310,52 @@ export default function MutabaahPage() {
 
   return (
     <div className="mx-auto max-w-[720px] space-y-5">
-      {/* Hero ringkas — ring + status + jalan ke Progress dalam satu baris */}
-      <div className="flex items-center gap-4">
-        <ProgressRing value={daily} size={76} stroke={8} track="var(--border)" bar="var(--primary)" />
-        <div className="flex-1 min-w-0">
-          <p className="text-xs text-muted-foreground" aria-live="polite">
-            {date.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
-          </p>
-          <div className="flex items-center gap-2 mt-0.5">
-            <h1 className="text-[26px] font-bold tracking-tight leading-tight flex-1 min-w-0 truncate">Mutabaah Hari Ini</h1>
-            <button
-              type="button"
-              onClick={() => setShowNote(true)}
-              aria-haspopup="dialog"
-              aria-label={noteLoaded.trim() ? "Lihat refleksi hari ini" : "Tulis refleksi hari ini"}
-              className="shrink-0 h-11 w-11 rounded-full border bg-card flex items-center justify-center hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <StickyNote className="h-4 w-4 text-primary" aria-hidden="true" />
-            </button>
+      {/* Hero — pil tanggal, judul + refleksi, cip status */}
+      <div>
+        <p className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-[11px] font-semibold text-muted-foreground" aria-live="polite">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+          {date.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" })}
+        </p>
+        <div className="flex items-center gap-4 mt-2.5">
+          <ProgressRing value={daily} size={76} stroke={8} track="var(--border)" bar="var(--primary)" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="text-[26px] font-bold tracking-tight leading-tight flex-1 min-w-0 truncate">Mutabaah Hari Ini</h1>
+              <button
+                type="button"
+                onClick={() => setShowNote(true)}
+                aria-haspopup="dialog"
+                aria-label={noteLoaded.trim() ? "Lihat refleksi hari ini" : "Tulis refleksi hari ini"}
+                className="shrink-0 h-11 w-11 rounded-full border bg-card flex items-center justify-center hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <StickyNote className="h-4 w-4 text-primary" aria-hidden="true" />
+              </button>
+            </div>
+            <p className="mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium bg-card border">
+              {daily === 100 ? (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
+                  <span>Alhamdulillah, bagian hari ini sudah selesai.</span>
+                </>
+              ) : completedCount === 0 ? (
+                <>
+                  <Bell className="h-3.5 w-3.5 text-amber-600" aria-hidden="true" />
+                  <span>Hari masih baru — mulai dari satu ketukan kecil.</span>
+                </>
+              ) : (
+                <>
+                  <Bell className="h-3.5 w-3.5 text-amber-600" aria-hidden="true" />
+                  <span>Sudah <strong className="tabular-nums">{completedCount}</strong> terisi, tinggal <strong className="tabular-nums">{dbHabits.length - completedCount}</strong> lagi.</span>
+                </>
+              )}
+            </p>
           </div>
-          <p className="text-sm text-muted-foreground mt-1 leading-6">
-            {daily === 100
-              ? "Alhamdulillah, bagian hari ini sudah selesai."
-              : completedCount === 0
-                ? "Hari masih baru — mulai dari satu ketukan kecil."
-                : `Sudah ${completedCount} terisi, tinggal ${dbHabits.length - completedCount} lagi.`}{" "}
-            <Link href="/progress" className="font-medium text-primary underline underline-offset-4 rounded-full">
-              Lihat perjalanan →
-            </Link>
-          </p>
         </div>
       </div>
 
-      {/* Saring berdasarkan kategori — menempel saat menggulir, berhitung terisi */}
+      {/* Saring berdasarkan kategori — segmented control menempel saat menggulir */}
       <div className="sticky top-14 z-20 -mx-4 px-4 lg:mx-0 lg:px-0 py-2 bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none" role="group" aria-label="Saring berdasarkan kategori">
+        <div className="flex gap-1 overflow-x-auto rounded-full bg-muted p-1 scrollbar-none" role="group" aria-label="Saring berdasarkan kategori">
           {["Semua", ...categories].map((c) => {
             const active = filter === c;
             const list = c === "Semua" ? (dbHabits ?? []) : (dbHabits ?? []).filter((h) => h.category === c);
@@ -357,10 +367,11 @@ export default function MutabaahPage() {
                 onClick={() => setFilter(c)}
                 aria-pressed={active}
                 aria-label={`Saring ${c}, ${filled} dari ${list.length} terisi`}
-                className={`shrink-0 inline-flex items-center gap-1.5 rounded-full pl-4 pr-3 py-2 min-h-[44px] text-xs font-medium border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? "bg-primary text-white border-primary shadow-sm" : "bg-card hover:bg-muted"}`}
+                className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 min-h-[40px] text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
               >
+                {allDone && !active && <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />}
                 {c}
-                <span className={`tabular-nums rounded-full px-1.5 py-0.5 text-[10px] font-bold ${active ? "bg-white/20 text-white" : allDone ? "bg-[var(--primary-soft)] text-primary" : "bg-muted text-muted-foreground"}`}>
+                <span className={`tabular-nums text-[10px] font-bold ${active ? "text-primary" : "text-muted-foreground/70"}`}>
                   {filled}/{list.length}
                 </span>
               </button>
