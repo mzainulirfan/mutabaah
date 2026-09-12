@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Bell, User, Mail, Users, Sun, Moon, ChevronRight, Target, LogOut, Pencil, Loader2, Flame } from "@/components/ui/hugeicons";
+import { Bell, User, Mail, Users, Sun, Moon, ChevronRight, Target, LogOut, Pencil, Loader2, Flame, FileText } from "@/components/ui/hugeicons";
 import Link from "next/link";
 import { Sheet } from "@/components/ui/sheet";
 import { Toast } from "@/components/ui/toast";
@@ -111,6 +111,7 @@ export default function ProfilPage() {
   const familyMenu: FamilyMenuItem[] = [
     { href: "/keluarga/anggota", title: "Anggota", desc: "Siapa saja di keluarga ini, undang yang belum bergabung", icon: Users, badge: `${members.length} orang` },
     { href: "/keluarga/amalan", title: "Amalan", desc: "Daftar target harian yang diisi bersama", icon: Target, badge: `${activeHabits} aktif` },
+    { href: "/keluarga/laporan", title: "Laporan", desc: "Rekap bulanan per anggota, siap dibagikan", icon: FileText },
   ];
 
   const handleSaveName = async () => {
@@ -386,6 +387,9 @@ export default function ProfilPage() {
             <Button onClick={saveNotif} disabled={saving || !user} className="rounded-full w-full min-h-[44px]">
               {saving ? "Menyimpan…" : "Simpan pengingat"}
             </Button>
+            <p className="text-[11px] text-muted-foreground leading-5 text-center">
+              Jadwal di atas sapaan umum. Jam khusus per amalan diatur di Keluarga › Amalan dan berbunyi terpisah.
+            </p>
             {!user && <p className="text-xs text-muted-foreground text-center">Masuk dulu untuk menyimpan pengingat.</p>}
           </div>
         </Card>

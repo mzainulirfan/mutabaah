@@ -53,6 +53,17 @@ export async function refreshReminders(supabase: DbClient): Promise<void> {
     if (total === 0) return;
     queueReminder(supabase, user.id, family.familyId, total, "morning", prefs.morning_time?.slice(0, 5) ?? "07:00");
     queueReminder(supabase, user.id, family.familyId, total, "evening", prefs.evening_time?.slice(0, 5) ?? "20:30");
+    // Pengingat per amalan: tambahan di luar 2 slot global, dilewati bila sudah selesai.
+    for (const h of family.habits) {
+      const time = h.reminder_time?.slice(0, 5) ?? "";
+      if (!/^\d{2}:\d{2}$/.test(time)) continue;
+      queueHabitReminder(supabase, user.id, family.familyId, {
+        id: h.id,
+        name: h.name,
+        target: Number(h.target_value) || 1,
+        unit: h.unit,
+      }, time);
+    }
   } catch {}
 }
 
@@ -111,6 +122,56 @@ async function fireReminder(
       icon: "/icon-192.png",
       badge: "/icon-192.png",
       tag: `mutabaah-${kind}`,
+      data: { url: "/mutabaah" },
+    });
+  } catch {}
+}
+
+function queueHabitReminder(
+  supabase: DbClient,
+  userId: string,
+  familyId: string,
+  habit: { id: string; name: string; target: number; unit: string | null },
+  time: string
+) {
+  const delay = nextFire(time).getTime() - Date.now();
+  timers.push(
+    setTimeout(() => {
+      void fireHabitReminder(supabase, userId, familyId, habit).finally(() => {
+        queueHabitReminder(supabase, userId, familyId, habit, time);
+      });
+    }, delay)
+  );
+}
+
+async function fireHabitReminder(
+  supabase: DbClient,
+  userId: string,
+  familyId: string,
+  habit: { id: string; name: string; target: number; unit: string | null }
+): Promise<void> {
+  try {
+    if (!isReminderSupported() || Notification.permission !== "granted") return;
+    const today = localDateKey(new Date());
+    const { data } = await supabase
+      .from("mutabaah_entries")
+      .select("value,status")
+      .eq("family_id", familyId)
+      .eq("user_id", userId)
+      .eq("date", today)
+      .eq("habit_id", habit.id)
+      .maybeSingle();
+    const row = data as { value: number; status: string } | null;
+    const value = row ? Number(row.value) : 0;
+    // Lewati bila sudah selesai (status atau nilai mencapai target).
+    if (row?.status === "COMPLETED" || value >= habit.target) return;
+    const unit = habit.unit ? ` ${habit.unit}` : "";
+    const reg = await navigator.serviceWorker.ready;
+    await reg.showNotification(habit.name, {
+      body: value > 0 ? `Belum selesai — ${value}/${habit.target}${unit} terisi. Lanjutkan?` : `Belum diisi hari ini — target ${habit.target}${unit}. Mulai sekarang?`,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: `mutabaah-habit-${habit.id}`,
       data: { url: "/mutabaah" },
     });
   } catch {}

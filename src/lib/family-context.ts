@@ -19,6 +19,7 @@ export type FamilyHabit = {
   type: HabitType;
   target_value: number;
   unit: string | null;
+  reminder_time: string | null;
   sort_order: number;
 };
 export type FamilyContext = {
@@ -72,7 +73,7 @@ async function loadFamilyContext(supabase: DbClient, userId: string): Promise<Fa
     supabase.from("mutabaah_family_members").select("user_id,role,can_manage_habits,can_view_family").eq("family_id", mem.family_id),
     supabase
       .from("mutabaah_habits")
-      .select("id,name,category,type,target_value,unit,sort_order")
+      .select("id,name,category,type,target_value,unit,reminder_time,sort_order")
       .eq("family_id", mem.family_id)
       .eq("is_active", true)
       .order("sort_order"),
@@ -103,6 +104,7 @@ async function loadFamilyContext(supabase: DbClient, userId: string): Promise<Fa
     type: h.type as HabitType,
     target_value: Number(h.target_value),
     unit: h.unit ?? null,
+    reminder_time: h.reminder_time ? String(h.reminder_time).slice(0, 5) : null,
     sort_order: h.sort_order ?? i,
   }));
 

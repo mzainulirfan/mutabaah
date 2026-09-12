@@ -10,7 +10,7 @@ import type { HabitType } from "@/lib/habits";
 import { getErrorMessage } from "@/lib/utils";
 import { clearFamilyCache, getFamilyContext, getSessionUser } from "@/lib/family-context";
 
-type HabitRow = { id: string; name: string; category: string; type: string; target_value: number; unit: string | null; is_active: boolean };
+type HabitRow = { id: string; name: string; category: string; type: string; target_value: number; unit: string | null; reminder_time: string | null; is_active: boolean };
 
 const categories = ["Ibadah Wajib", "Ibadah Sunnah", "Al-Qur'an", "Dzikir & Doa", "Akhlak", "Belajar", "Kebiasaan Baik", "Custom"] as const;
 
@@ -86,11 +86,11 @@ export default function AmalanPage() {
   const [familyId, setFamilyId] = useState<string | null>(null);
   const [habits, setHabits] = useState<HabitRow[]>([]);
   const [habitOpen, setHabitOpen] = useState(false);
-  const [newHabit, setNewHabit] = useState<{ name: string; category: string; type: HabitType; target: number; unit: string }>({ name: "", category: "Ibadah Wajib", type: "BOOLEAN", target: 1, unit: "" });
+  const [newHabit, setNewHabit] = useState<{ name: string; category: string; type: HabitType; target: number; unit: string; reminder: string }>({ name: "", category: "Ibadah Wajib", type: "BOOLEAN", target: 1, unit: "", reminder: "" });
   const [adding, setAdding] = useState(false);
   const [manageHabit, setManageHabit] = useState<HabitRow | null>(null);
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", category: "Ibadah Wajib", target: 1, unit: "", is_active: true });
+  const [editForm, setEditForm] = useState({ name: "", category: "Ibadah Wajib", target: 1, unit: "", reminder: "", is_active: true });
   const [savingEdit, setSavingEdit] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -111,7 +111,7 @@ export default function AmalanPage() {
     if (!family) { setLoading(false); return; }
     setFamilyId(family.familyId);
     setCanManage(family.canManageHabits);
-    const { data: habitRows } = await supabase.from("mutabaah_habits").select("id,name,category,type,target_value,unit,is_active").eq("family_id", family.familyId).order("sort_order");
+    const { data: habitRows } = await supabase.from("mutabaah_habits").select("id,name,category,type,target_value,unit,reminder_time,is_active").eq("family_id", family.familyId).order("sort_order");
     setHabits((habitRows ?? []) as HabitRow[]);
     setLoading(false);
   }, [supabase]);
@@ -142,6 +142,8 @@ export default function AmalanPage() {
     try {
       const { createHabit } = await import("@/lib/actions/habit");
       const isTap = newHabit.type === "BOOLEAN";
+      const reminder = newHabit.reminder.trim();
+      if (reminder && !/^\d{2}:\d{2}$/.test(reminder)) throw new Error("Jam pengingat tidak valid.");
       await createHabit({
         family_id: familyId,
         name: newHabit.name.trim(),
@@ -149,9 +151,10 @@ export default function AmalanPage() {
         type: newHabit.type,
         target_value: isTap ? 1 : Number(newHabit.target) || 1,
         unit: isTap ? undefined : newHabit.unit.trim() || selectedType.unitPlaceholder,
+        reminder_time: reminder || undefined,
       });
       clearFamilyCache();
-      setNewHabit({ name: "", category: "Ibadah Wajib", type: "BOOLEAN", target: 1, unit: "" });
+      setNewHabit({ name: "", category: "Ibadah Wajib", type: "BOOLEAN", target: 1, unit: "", reminder: "" });
       setHabitOpen(false);
       setMsg(`Amalan "${newHabit.name.trim()}" tersimpan. Silakan isi mulai hari ini.`);
       load();
@@ -183,7 +186,7 @@ export default function AmalanPage() {
   };
 
   const openEdit = (h: HabitRow) => {
-    setEditForm({ name: h.name, category: h.category, target: Number(h.target_value) || 1, unit: h.unit ?? "", is_active: h.is_active });
+    setEditForm({ name: h.name, category: h.category, target: Number(h.target_value) || 1, unit: h.unit ?? "", reminder: (h.reminder_time ?? "").slice(0, 5), is_active: h.is_active });
     setEditing(true);
   };
 
@@ -195,15 +198,18 @@ export default function AmalanPage() {
       const keepTarget = manageHabit.type === "BOOLEAN";
       const nextTarget = keepTarget ? manageHabit.target_value : Number(editForm.target) || 1;
       const nextUnit = keepTarget ? manageHabit.unit : editForm.unit.trim() || null;
+      const nextReminder = editForm.reminder.trim();
+      if (nextReminder && !/^\d{2}:\d{2}$/.test(nextReminder)) throw new Error("Jam pengingat tidak valid.");
       await updateHabit(manageHabit.id, {
         name: editForm.name.trim(),
         category: editForm.category,
         target_value: nextTarget,
         unit: nextUnit ?? undefined,
+        reminder_time: nextReminder || null,
         is_active: editForm.is_active,
       });
       clearFamilyCache();
-      const nextFields = { name: editForm.name.trim(), category: editForm.category, target_value: nextTarget, unit: nextUnit, is_active: editForm.is_active };
+      const nextFields = { name: editForm.name.trim(), category: editForm.category, target_value: nextTarget, unit: nextUnit, reminder_time: nextReminder || null, is_active: editForm.is_active };
       setHabits((prev) => prev.map((x) => (x.id === manageHabit.id ? { ...x, ...nextFields } : x)));
       setManageHabit((prev) => (prev ? { ...prev, ...nextFields } : prev));
       setEditing(false);
@@ -290,6 +296,11 @@ export default function AmalanPage() {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate flex items-center gap-1.5">
                       {h.name} {!h.is_active && <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full">Dijeda</span>}
+                      {h.reminder_time && (
+                        <span className="text-[10px] font-semibold text-primary bg-[var(--primary-soft)] px-1.5 py-0.5 rounded-full tabular-nums shrink-0">
+                          {h.reminder_time.slice(0, 5)}
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-muted-foreground flex items-center gap-1.5 truncate">
                       <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${h.is_active ? "bg-primary" : "bg-muted-foreground"}`} /> {h.category} • {typeLabel(h.type)}{h.type !== "BOOLEAN" ? ` • ${habitTargetText(h)}` : ""}
@@ -387,6 +398,10 @@ export default function AmalanPage() {
                     </div>
                   </div>
                 )}
+                <div>
+                  <label htmlFor="ubah-ingatkan" className="text-xs font-medium">Ingatkan saya <span className="text-muted-foreground font-normal">(opsional)</span></label>
+                  <input id="ubah-ingatkan" type="time" value={editForm.reminder} onChange={(e) => setEditForm({ ...editForm, reminder: e.target.value })} className="mt-1.5 w-full rounded-xl border bg-card px-3 py-2.5 text-sm" />
+                </div>
                 <div className="flex gap-2">
                   <Button variant="secondary" className="flex-1 rounded-full min-h-[44px]" onClick={() => setEditing(false)}>
                     Kembali
@@ -442,6 +457,11 @@ export default function AmalanPage() {
                   </div>
                 </div>
               )}
+              <div>
+                <label htmlFor="amalan-ingatkan" className="text-xs font-medium">Ingatkan saya <span className="text-muted-foreground font-normal">(opsional)</span></label>
+                <input id="amalan-ingatkan" type="time" value={newHabit.reminder} onChange={(e) => setNewHabit({ ...newHabit, reminder: e.target.value })} className="mt-1.5 w-full rounded-xl border bg-card px-3 py-2.5 text-sm" />
+                <p className="text-[11px] text-muted-foreground mt-1">Berbunyi bila amalan ini belum selesai. Kosongkan untuk tanpa pengingat.</p>
+              </div>
               <Button className="w-full rounded-full min-h-[44px]" onClick={handleAddHabit} disabled={adding || !newHabit.name.trim()}>
                 {adding ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-1.5" />} Simpan Amalan
               </Button>

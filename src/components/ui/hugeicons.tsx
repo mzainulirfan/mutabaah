@@ -49,6 +49,8 @@ import {
   HeartHandshakeIcon,
   ArrowLeft01Icon,
   CircleDashedIcon,
+  Share01Icon,
+  File02Icon,
 } from "@hugeicons/core-free-icons";
 import type { SVGProps } from "react";
 
@@ -108,3 +110,5 @@ export const LayoutTemplate = makeIcon(LayoutTable01Icon);
 export const HeartHandshake = makeIcon(HeartHandshakeIcon);
 export const ArrowLeft = makeIcon(ArrowLeft01Icon);
 export const CircleDashed = makeIcon(CircleDashedIcon);
+export const Share = makeIcon(Share01Icon);
+export const FileText = makeIcon(File02Icon);

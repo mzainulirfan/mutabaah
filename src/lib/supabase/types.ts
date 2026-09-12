@@ -28,5 +28,6 @@ export type HabitListRow = {
   type: string;
   target_value: number;
   unit: string | null;
+  reminder_time?: string | null;
   sort_order: number;
 };
