@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { ProgressRing } from "@/components/app/progress-ring";
 import { Flame, ChevronRight, CheckCircle2, Users, Sparkles, TrendingUp, TrendingDown, Bell, Quote } from "@/components/ui/hugeicons";
@@ -274,17 +275,14 @@ export default function BerandaPage() {
   if (!members.length) {
     return (
       <div className="space-y-6">
-        <Card className="p-8 text-center rounded-[24px] border-dashed">
-          <div className="h-14 w-14 rounded-2xl bg-[var(--primary-soft)] flex items-center justify-center mx-auto">
-            <Sparkles className="h-6 w-6 text-primary" />
-          </div>
-          <h2 className="font-bold text-lg mt-4">Mulai dari keluarga kecilmu</h2>
-          <p className="text-sm text-muted-foreground mt-1 max-w-[36ch] mx-auto leading-6">Buat keluarga, undang anggota tersayang, lalu pilih target pertama bersama. Pelan-pelan, yang penting jalan terus.</p>
-          <div className="mt-6 flex justify-center gap-2">
-            <Link href="/onboarding"><Button className="rounded-full">Buat Keluarga</Button></Link>
-            <Link href="/gabung"><Button variant="secondary" className="rounded-full">Gabung pakai kode</Button></Link>
-          </div>
-        </Card>
+        <EmptyState
+          icon={<Sparkles className="h-6 w-6" aria-hidden="true" />}
+          title="Mulai dari keluarga kecilmu"
+          desc="Buat keluarga, undang anggota tersayang, lalu pilih target pertama bersama. Pelan-pelan, yang penting jalan terus."
+        >
+          <Link href="/onboarding"><Button className="rounded-full">Buat Keluarga</Button></Link>
+          <Link href="/gabung"><Button variant="secondary" className="rounded-full">Gabung pakai kode</Button></Link>
+        </EmptyState>
       </div>
     );
   }

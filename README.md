@@ -36,6 +36,21 @@ Aplikasi membutuhkan env Supabase — tanpa itu halaman menampilkan error konfig
 
 `public/manifest.json` + `public/sw.js` (last-write-wins) + `SWRegister`. Install via browser prompt.
 
+## Pengingat server (opsional, agar bunyi walau aplikasi mati)
+
+1. SQL Editor → jalankan `supabase/migrations/015_push_subscriptions.sql`
+2. Generate kunci VAPID (sekali saja) lalu isi `.env.local` + hosting:
+   `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT=mailto:kamu@email.com`
+3. Deploy Edge Function (butuh Supabase CLI login):
+   ```bash
+   supabase functions deploy send-reminders
+   supabase secrets set VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... VAPID_SUBJECT=mailto:kamu@email.com
+   ```
+4. Aktifkan cron 5-menitan — SQL di bagian bawah file `015` (butuh ekstensi `pg_cron` + `pg_net`, paket berbayar/Pro sesuai tier).
+5. Di aplikasi: Profil → Pengingat → Aktifkan (mendaftarkan perangkat ke push server).
+
+Tanpa langkah ini, pengingat tetap jalan versi lokal (bunyi bila aplikasi pernah dibuka).
+
 ## Progress formula
 
 `daily = avg(value/target*100)` capped 100, BOOLEAN 0/100, PARTIAL proporsional. Streak = hari dengan progress >=70%.

@@ -28,6 +28,48 @@ export async function requestReminderPermission(): Promise<NotificationPermissio
   }
 }
 
+function vapidKey(): string | null {
+  const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
+  return key.length > 20 ? key : null;
+}
+
+/** Daftarkan perangkat ini ke push server. Kembalikan endpoint bila berhasil. */
+export async function subscribeDeviceToPush(): Promise<string | null> {
+  try {
+    if (!isReminderSupported()) return null;
+    const key = vapidKey();
+    if (!key) return null;
+    if (Notification.permission !== "granted") return null;
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    const sub =
+      existing ??
+      (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }));
+    if (!sub) return null;
+    const json = sub.toJSON();
+    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return null;
+    const { savePushSubscription } = await import("@/lib/actions/push");
+    await savePushSubscription({ endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth });
+    return json.endpoint;
+  } catch {
+    return null;
+  }
+}
+
+/** Hapus langganan perangkat ini dari server (dipakai saat izin dicabut / keluar). */
+export async function unsubscribeDeviceFromPush(): Promise<void> {
+  try {
+    if (!isReminderSupported()) return;
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) return;
+    const endpoint = sub.endpoint;
+    await sub.unsubscribe().catch(() => false);
+    const { deletePushSubscription } = await import("@/lib/actions/push");
+    await deletePushSubscription(endpoint).catch(() => ({ ok: false }));
+  } catch {}
+}
+
 export function clearScheduledReminders() {
   while (timers.length) clearTimeout(timers.pop());
 }

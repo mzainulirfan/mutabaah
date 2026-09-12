@@ -1,5 +1,5 @@
-// Mutabaah PWA SW — v6 (pengingat lokal)
-const CACHE = "mutabaah-v6";
+// Mutabaah PWA SW — v7 (pengingat lokal)
+const CACHE = "mutabaah-v7";
 const PRECACHE = ["/", "/manifest.json", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -75,4 +75,21 @@ self.addEventListener("notificationclick", (e) => {
       return self.clients.openWindow(url);
     })
   );
+});
+
+// Push dari server (Edge Function send-reminders) — tampil walau aplikasi mati.
+self.addEventListener("push", (e) => {
+  let payload = {};
+  try {
+    payload = e.data ? e.data.json() : {};
+  } catch {}
+  const title = payload.title || "Mutabaah";
+  const options = {
+    body: payload.body || "Sudah mengisi mutabaah hari ini?",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    tag: payload.tag || "mutabaah-server",
+    data: { url: (payload.data && payload.data.url) || "/mutabaah" },
+  };
+  e.waitUntil(self.registration.showNotification(title, options));
 });

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Bell, User, Mail, Users, Sun, Moon, ChevronRight, Target, LogOut, Pencil, Loader2, Flame, FileText } from "@/components/ui/hugeicons";
 import Link from "next/link";
@@ -44,6 +45,7 @@ export default function ProfilPage() {
   const [perm, setPerm] = useState<NotificationPermission | "unsupported">(() =>
     typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported"
   );
+  const [serverPush, setServerPush] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -82,6 +84,18 @@ export default function ProfilPage() {
     const t = setTimeout(() => setErr(null), 4000);
     return () => clearTimeout(t);
   }, [err]);
+
+  // Tandai bila perangkat ini sudah terdaftar di push server.
+  useEffect(() => {
+    void (async () => {
+      try {
+        if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        setServerPush(!!sub);
+      } catch {}
+    })();
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -153,12 +167,18 @@ export default function ProfilPage() {
   };
 
   const handleEnableNotif = async () => {
-    const { requestReminderPermission, refreshReminders } = await import("@/lib/reminders");
+    const { requestReminderPermission, refreshReminders, subscribeDeviceToPush } = await import("@/lib/reminders");
     const result = await requestReminderPermission();
     setPerm(result);
     if (result === "granted") {
       await refreshReminders(supabase);
-      setMsg("Notifikasi diaktifkan di perangkat ini.");
+      const endpoint = await subscribeDeviceToPush();
+      setServerPush(endpoint !== null);
+      setMsg(
+        endpoint !== null
+          ? "Notifikasi diaktifkan — termasuk saat aplikasi tidak dibuka."
+          : "Notifikasi lokal diaktifkan. Push server belum terdaftar di perangkat ini."
+      );
     } else if (result === "denied") {
       setErr("Izin notifikasi ditolak. Aktifkan lewat pengaturan browser bila berubah pikiran.");
     }
@@ -229,22 +249,21 @@ export default function ProfilPage() {
           <Users className="h-4 w-4 text-primary" aria-hidden="true" /> Keluarga
         </h2>
         {!family ? (
-          <Card className="p-8 text-center rounded-[24px] border-dashed">
-            <div className="h-14 w-14 rounded-2xl bg-[var(--primary-soft)] flex items-center justify-center mx-auto">
-              <Users className="h-6 w-6 text-primary" aria-hidden="true" />
-            </div>
-            <h3 className="font-bold text-lg mt-4">Belum ada keluarga</h3>
-            <p className="text-sm text-muted-foreground mt-1 max-w-[32ch] mx-auto">Buat keluarga untuk mengatur amalan dan mengundang anggota.</p>
-            <Link href="/onboarding" className="inline-flex items-center justify-center mt-5 rounded-full bg-primary text-primary-foreground text-sm font-medium px-5 py-2.5 min-h-[44px] hover:bg-[#134d39] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <EmptyState
+            icon={<Users className="h-6 w-6" aria-hidden="true" />}
+            title="Belum ada keluarga"
+            desc="Buat keluarga untuk mengatur amalan dan mengundang anggota."
+          >
+            <Link href="/onboarding" className="inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-medium px-5 py-2.5 min-h-[44px] hover:bg-[#134d39] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               Buat Keluarga
             </Link>
-            <div className="mt-3 text-sm">
+            <span className="w-full text-sm">
               <span className="text-muted-foreground">Punya kode undangan?</span>{" "}
               <Link href="/gabung" className="font-medium text-primary underline underline-offset-2">
                 Gabung keluarga
               </Link>
-            </div>
-          </Card>
+            </span>
+          </EmptyState>
         ) : (
           <Card className="rounded-[20px] p-5">
             <div className="flex items-center gap-3">
@@ -341,7 +360,9 @@ export default function ProfilPage() {
                 <span className="block text-sm font-medium">Notifikasi perangkat</span>
                 <span className="block text-[11px] text-muted-foreground mt-0.5">
                   {perm === "granted"
-                    ? "Aktif di perangkat ini."
+                    ? serverPush
+                      ? "Aktif — termasuk saat aplikasi tidak dibuka."
+                      : "Aktif lokal. Push server belum terdaftar — ketuk Aktifkan ulang."
                     : perm === "denied"
                       ? "Diblokir — aktifkan lewat pengaturan browser."
                       : perm === "unsupported"
