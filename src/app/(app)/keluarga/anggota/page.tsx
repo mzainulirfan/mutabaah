@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Link2, Trash2, Copy, Loader2, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Link2, Trash2, Copy, Loader2, ChevronLeft, ChevronRight, X } from "@/components/ui/hugeicons";
 import { MoreVertical } from "@/components/ui/hugeicons";
 import Link from "next/link";
 import { Sheet } from "@/components/ui/sheet";

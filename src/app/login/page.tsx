@@ -6,7 +6,7 @@ import { AuthSubmitButton } from "@/components/ui/auth-submit-button";
 import { login, resetPassword } from "@/lib/actions/auth";
 import { createClient } from "@/lib/supabase/server";
 import { safeNextPath } from "@/lib/utils";
-import { AlertCircle, CheckCircle2, ChevronLeft, Users } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronLeft, Users } from "@/components/ui/hugeicons";
 import { PasswordInput } from "@/components/ui/password-input";
 
 export const metadata: Metadata = {

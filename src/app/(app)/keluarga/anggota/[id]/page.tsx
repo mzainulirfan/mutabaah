@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
-import { ChevronLeft, Flame, TrendingUp, Sprout } from "lucide-react";
+import { ChevronLeft, Flame, TrendingUp, Sprout } from "@/components/ui/hugeicons";
 import { createClient } from "@/lib/supabase/client";
 import { dailyProgress, calcStreak } from "@/lib/progress";
 import { displayHabitName } from "@/lib/habits";

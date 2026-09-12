@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LogOut, Sparkles } from "lucide-react";
+import { LogOut, Sparkles } from "@/components/ui/hugeicons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { Home04Icon, CheckListIcon, BarChartIcon, UserIcon } from "@hugeicons/core-free-icons";
 import type { SVGProps } from "react";

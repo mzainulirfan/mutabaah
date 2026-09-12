@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Check, AlertCircle, Users } from "lucide-react";
+import { Check, AlertCircle, Users } from "@/components/ui/hugeicons";
 import { createClient } from "@/lib/supabase/server";
 import { createHash } from "crypto";
 import { redirect } from "next/navigation";

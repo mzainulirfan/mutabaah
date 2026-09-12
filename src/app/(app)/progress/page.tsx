@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { ProgressRing } from "@/components/app/progress-ring";
-import { Flame, Trophy, CalendarDays, TrendingUp, ArrowRight, Check, X, Users, User, ChevronLeft, ChevronRight } from "lucide-react";
+import { Flame, Trophy, CalendarDays, TrendingUp, ArrowRight, Check, X, Users, User, ChevronLeft, ChevronRight } from "@/components/ui/hugeicons";
 import Link from "next/link";
 import { Sheet } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";

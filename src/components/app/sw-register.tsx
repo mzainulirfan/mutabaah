@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Download, WifiOff } from "lucide-react";
+import { Download, WifiOff } from "@/components/ui/hugeicons";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => void;

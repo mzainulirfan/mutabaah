@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Bell, User, Mail, Users, Sun, Moon, ChevronRight, Target, LogOut, Pencil, Loader2, Flame } from "lucide-react";
+import { Bell, User, Mail, Users, Sun, Moon, ChevronRight, Target, LogOut, Pencil, Loader2, Flame } from "@/components/ui/hugeicons";
 import Link from "next/link";
 import { Sheet } from "@/components/ui/sheet";
 import { Toast } from "@/components/ui/toast";

@@ -13,7 +13,7 @@ import {
   Target,
   Users,
   CircleDashed,
-} from "lucide-react";
+} from "@/components/ui/hugeicons";
 import { createClient } from "@/lib/supabase/client";
 
 type HabitType = "BOOLEAN" | "QUANTITY" | "COUNTER" | "DURATION";

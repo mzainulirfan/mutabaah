@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ArrowRight, Check, Loader2, TicketCheck } from "lucide-react";
+import { ArrowRight, Check, Loader2, TicketCheck } from "@/components/ui/hugeicons";
 import { createClient } from "@/lib/supabase/client";
 import { getErrorMessage } from "@/lib/utils";
 

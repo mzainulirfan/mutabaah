@@ -26,6 +26,29 @@ import {
   Target02Icon,
   ChevronLeftIcon,
   PencilEdit01Icon,
+  AlertCircleIcon,
+  Calendar01Icon,
+  Copy01Icon,
+  Download01Icon,
+  ViewIcon,
+  ViewOffIcon,
+  Link02Icon,
+  Logout01Icon,
+  Mail01Icon,
+  MoonIcon,
+  SproutIcon,
+  Sun03Icon,
+  TicketCheckIcon,
+  TrophyIcon,
+  BarChartIcon,
+  CalendarHeartIcon,
+  ShieldCheckIcon,
+  SmartPhone01Icon,
+  Timer01Icon,
+  LayoutTable01Icon,
+  HeartHandshakeIcon,
+  ArrowLeft01Icon,
+  CircleDashedIcon,
 } from "@hugeicons/core-free-icons";
 import type { SVGProps } from "react";
 
@@ -62,3 +85,26 @@ export const Heart = makeIcon(FavouriteIcon);
 export const Target = makeIcon(Target02Icon);
 export const ChevronLeft = makeIcon(ChevronLeftIcon);
 export const Pencil = makeIcon(PencilEdit01Icon);
+export const AlertCircle = makeIcon(AlertCircleIcon);
+export const CalendarDays = makeIcon(Calendar01Icon);
+export const Copy = makeIcon(Copy01Icon);
+export const Download = makeIcon(Download01Icon);
+export const Eye = makeIcon(ViewIcon);
+export const EyeOff = makeIcon(ViewOffIcon);
+export const Link2 = makeIcon(Link02Icon);
+export const LogOut = makeIcon(Logout01Icon);
+export const Mail = makeIcon(Mail01Icon);
+export const Moon = makeIcon(MoonIcon);
+export const Sprout = makeIcon(SproutIcon);
+export const Sun = makeIcon(Sun03Icon);
+export const TicketCheck = makeIcon(TicketCheckIcon);
+export const Trophy = makeIcon(TrophyIcon);
+export const BarChart3 = makeIcon(BarChartIcon);
+export const CalendarHeart = makeIcon(CalendarHeartIcon);
+export const ShieldCheck = makeIcon(ShieldCheckIcon);
+export const Smartphone = makeIcon(SmartPhone01Icon);
+export const Timer = makeIcon(Timer01Icon);
+export const LayoutTemplate = makeIcon(LayoutTable01Icon);
+export const HeartHandshake = makeIcon(HeartHandshakeIcon);
+export const ArrowLeft = makeIcon(ArrowLeft01Icon);
+export const CircleDashed = makeIcon(CircleDashedIcon);

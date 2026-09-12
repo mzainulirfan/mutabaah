@@ -1,5 +1,5 @@
 "use client";
-import { CheckCircle2, AlertCircle } from "lucide-react";
+import { CheckCircle2, AlertCircle } from "@/components/ui/hugeicons";
 import { cn } from "@/lib/utils";
 
 export function Toast({ kind, message }: { kind: "success" | "error"; message: string | null }) {

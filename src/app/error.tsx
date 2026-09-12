@@ -2,7 +2,7 @@
 import { useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle } from "@/components/ui/hugeicons";
 import { getErrorMessage } from "@/lib/utils";
 
 export default function RootError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {

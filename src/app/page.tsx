@@ -18,7 +18,7 @@ import {
   BookOpen,
   Target,
   WifiOff,
-} from "lucide-react";
+} from "@/components/ui/hugeicons";
 
 export const metadata: Metadata = {
   title: "Mutabaah — Tumbuh dalam kebiasaan baik, sedikit demi sedikit",
