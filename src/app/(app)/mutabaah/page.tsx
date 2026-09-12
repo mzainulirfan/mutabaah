@@ -7,6 +7,7 @@ import { displayHabitName } from "@/lib/habits";
 import { HabitCard } from "@/components/app/habit-card";
 import { ProgressRing } from "@/components/app/progress-ring";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { StickyNote, WifiOff, Sparkles, Bell, CheckCircle2 } from "@/components/ui/hugeicons";
 import { Sheet } from "@/components/ui/sheet";
@@ -153,13 +154,13 @@ export default function MutabaahPage() {
 
   const completedCount = useMemo(() => Object.values(entries).filter((e) => e.status === "COMPLETED").length, [entries]);
 
-  async function persist(habitId: string, value: number, status: Entry["status"], context?: "SENDIRI" | "BERJAMAAH" | null) {
+  async function persist(habitId: string, value: number, status: Entry["status"], context?: "SENDIRI" | "BERJAMAAH" | null, note?: string | null) {
     const iso = localDateKey(date);
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(habitId)) {
       setSyncError("Sepertinya datanya sudah lama — muat ulang halaman sekali saja, ya.");
       return;
     }
-    const payload = { habit_id: habitId, value, status, date: iso, context: context ?? null };
+    const payload = { habit_id: habitId, value, status, date: iso, context: context ?? null, note: note ?? null };
     if (!userId) return;
     if (!navigator.onLine) {
       enqueue(payload);
@@ -168,7 +169,7 @@ export default function MutabaahPage() {
     }
     try {
       const { updateMutabaahEntry } = await import("@/lib/actions/habit");
-      await updateMutabaahEntry({ habit_id: habitId, user_id: userId, date: iso, value, status, context: context ?? null });
+      await updateMutabaahEntry({ habit_id: habitId, user_id: userId, date: iso, value, status, context: context ?? null, note: note ?? null });
       setSyncError(null);
     } catch (e: unknown) {
       if (e instanceof Error && e.message.includes("Invalid habit_id")) {
@@ -187,8 +188,10 @@ export default function MutabaahPage() {
     setNoteSaving(true);
     try {
       const { updateMutabaahEntry } = await import("@/lib/actions/habit");
-      // Simpan pada entri yang sudah ada; kalau belum ada, buat entri baru (PENDING + catatan)
-      const target = dbHabits.find((h) => entries[h.id]) ?? dbHabits[0];
+      // Deterministik: tempel pada entri yang sudah ber-note; kalau belum ada,
+      // pakai entri pertama yang sudah terisi; terakhir baru amalan pertama.
+      const withNote = dbHabits.find((h) => entries[h.id]?.note?.trim());
+      const target = dbHabits.find((h) => h.id === withNote?.id) ?? dbHabits.find((h) => entries[h.id]) ?? dbHabits[0];
       const cur = entries[target.id];
       const value = cur?.value ?? 0;
       const status = cur?.status ?? "PENDING";
@@ -210,39 +213,40 @@ export default function MutabaahPage() {
     if (!habit) return;
     // Sholat wajib yang belum selesai: wajib pilih Sendiri/Berjamaah dulu (bukan langsung selesai)
     if (habit.category === "Ibadah Wajib" && (!entries[habitId] || entries[habitId].status !== "COMPLETED")) return;
-    setEntries((prev) => {
-      const cur = prev[habitId];
-      let next: Entry;
-      if (!cur || cur.status === "PENDING") next = { habitId, value: habit.type === "BOOLEAN" ? 1 : habit.target_value, status: "COMPLETED" };
-      else if (cur.status === "COMPLETED") next = { habitId, value: 0, status: "PENDING" };
-      else next = { habitId, value: habit.target_value, status: "COMPLETED" };
-      persist(habitId, next.value, next.status, null);
-      return { ...prev, [habitId]: next };
-    });
+    const cur = entries[habitId];
+    let next: Entry;
+    if (!cur || cur.status === "PENDING") next = { habitId, value: habit.type === "BOOLEAN" ? 1 : habit.target_value, status: "COMPLETED" };
+    else if (cur.status === "COMPLETED") next = { habitId, value: 0, status: "PENDING" };
+    else next = { habitId, value: habit.target_value, status: "COMPLETED" };
+    if (cur?.note) next.note = cur.note;
+    setEntries((prev) => ({ ...prev, [habitId]: next }));
+    void persist(habitId, next.value, next.status, null, next.note ?? null);
   }
 
   function handleContext(habitId: string, ctx: "SENDIRI" | "BERJAMAAH") {
     const habit = dbHabits?.find((h) => h.id === habitId);
     if (!habit) return;
     const target = habit.type === "BOOLEAN" ? 1 : habit.target_value;
+    const prevEntry = entries[habitId];
     const next: Entry = { habitId, value: target, status: "COMPLETED", context: ctx };
+    if (prevEntry?.note) next.note = prevEntry.note;
     setEntries((prev) => ({ ...prev, [habitId]: next }));
-    persist(habitId, target, "COMPLETED", ctx);
+    void persist(habitId, target, "COMPLETED", ctx, next.note ?? null);
   }
 
   function handleUpdate(habitId: string, delta: number) {
     const habit = dbHabits?.find((h) => h.id === habitId);
     if (!habit) return;
-    setEntries((prev) => {
-      const cur = prev[habitId] ?? { habitId, value: 0, status: "PENDING" as const };
-      const nextVal = Math.max(0, Math.min(habit.target_value, cur.value + delta));
-      let status: Entry["status"] = "PENDING";
-      if (nextVal === 0) status = "PENDING";
-      else if (nextVal >= habit.target_value) status = "COMPLETED";
-      else status = "PARTIAL";
-      persist(habitId, nextVal, status);
-      return { ...prev, [habitId]: { habitId, value: nextVal, status } };
-    });
+    const cur = entries[habitId] ?? { habitId, value: 0, status: "PENDING" as const };
+    const nextVal = Math.max(0, Math.min(habit.target_value, cur.value + delta));
+    let status: Entry["status"] = "PENDING";
+    if (nextVal === 0) status = "PENDING";
+    else if (nextVal >= habit.target_value) status = "COMPLETED";
+    else status = "PARTIAL";
+    const nextEntry: Entry = { habitId, value: nextVal, status };
+    if (cur.note) nextEntry.note = cur.note;
+    setEntries((prev) => ({ ...prev, [habitId]: nextEntry }));
+    void persist(habitId, nextVal, status, undefined, nextEntry.note ?? null);
   }
 
   const filteredHabits = useMemo(() => (filter === "Semua" ? dbHabits ?? [] : (dbHabits ?? []).filter((h) => h.category === filter)), [dbHabits, filter]);
@@ -292,16 +296,15 @@ export default function MutabaahPage() {
   if (!dbHabits || dbHabits.length === 0) {
     return (
       <div className="space-y-6">
-        <Card className="p-8 text-center rounded-[24px] border-dashed">
-          <div className="mx-auto h-14 w-14 rounded-2xl bg-[var(--primary-soft)] flex items-center justify-center">
-            <Sparkles className="h-6 w-6 text-primary" />
-          </div>
-          <h3 className="font-bold text-lg mt-4">Belum ada target hari ini</h3>
-          <p className="text-sm text-muted-foreground mt-1 max-w-[36ch] mx-auto leading-6">Mulai dari satu amalan kecil dulu. Nanti bisa ditambah pelan-pelan bersama keluarga.</p>
-          <Button className="mt-5 rounded-full" onClick={() => router.push("/keluarga/amalan")}>
+        <EmptyState
+          icon={<Sparkles className="h-6 w-6" aria-hidden="true" />}
+          title="Belum ada target hari ini"
+          desc="Mulai dari satu amalan kecil dulu. Nanti bisa ditambah pelan-pelan bersama keluarga."
+        >
+          <Button className="rounded-full" onClick={() => router.push("/keluarga/amalan")}>
             Buat Target Pertama
           </Button>
-        </Card>
+        </EmptyState>
       </div>
     );
   }

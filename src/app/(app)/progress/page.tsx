@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ProgressRing } from "@/components/app/progress-ring";
 import { Flame, Trophy, CalendarDays, TrendingUp, ArrowRight, Check, X, Users, User, ChevronLeft, ChevronRight } from "@/components/ui/hugeicons";
 import Link from "next/link";
@@ -92,6 +93,13 @@ export default function ProgressPage() {
     setFocusHabitId(null);
   };
 
+  // Indeks entri per tanggal+amalan — dipakai semua memo render agar O(1).
+  const entryIndex = useMemo(() => {
+    const m = new Map<string, EntryRow>();
+    for (const e of dayEntries) m.set(`${e.date}|${e.habit_id}`, e);
+    return m;
+  }, [dayEntries]);
+
   // Deret 30 hari per amalan — dipakai mini-grafik 7 hari dan sheet detail.
   const spark = useMemo(() => {
     // Jangkar = hari terakhir periode yang dilihat (hari ini, atau akhir bulan lampau).
@@ -106,14 +114,14 @@ export default function ProgressPage() {
     for (const h of habits) {
       const target = Number(h.target_value) || 1;
       map[h.id] = days.map((iso) => {
-        const e = dayEntries.find((x) => x.date === iso && x.habit_id === h.id);
+        const e = entryIndex.get(`${iso}|${h.id}`);
         const v = e ? Number(e.value) : 0;
         if (h.type === "BOOLEAN") return v ? 100 : 0;
         return Math.round(Math.min(100, (v / target) * 100));
       });
     }
     return map;
-  }, [habits, dayEntries, calMeta]);
+  }, [habits, entryIndex, calMeta]);
 
   // Amalan yang sedang dilihat detailnya (sheet) — null berarti tertutup.
   // Selalu mode bulan terfilter (calMeta), tanpa opsi 7/30 hari.
@@ -128,7 +136,7 @@ export default function ProgressPage() {
     }
     const target = Number(h.target_value) || 1;
     const series = days.map(({ iso }) => {
-      const e = dayEntries.find((x) => x.date === iso && x.habit_id === h.id);
+      const e = entryIndex.get(`${iso}|${h.id}`);
       const v = e ? Number(e.value) : 0;
       if (h.type === "BOOLEAN") return v ? 100 : 0;
       return Math.round(Math.min(100, (v / target) * 100));
@@ -144,14 +152,14 @@ export default function ProgressPage() {
     const isWajib = h.category === "Ibadah Wajib";
     const contexts: ("SENDIRI" | "BERJAMAAH" | null)[] = days.map(({ iso }) => {
       if (!isWajib) return null;
-      const e = dayEntries.find((x) => x.date === iso && x.habit_id === h.id);
+      const e = entryIndex.get(`${iso}|${h.id}`);
       return e && Number(e.value) > 0 ? (e.context ?? null) : null;
     });
     const berjamaah = contexts.filter((c) => c === "BERJAMAAH").length;
     const sendiri = contexts.filter((c) => c === "SENDIRI").length;
     const rangeLabel = calMeta.isCurrent ? "bulan ini" : calMeta.monthShort.toLowerCase();
     return { habit: h, series, dates: days.map((d) => d.dayNum), avg, activeDays, longest, total: days.length, isWajib, contexts, berjamaah, sendiri, rangeLabel };
-  }, [focusHabitId, habits, dayEntries, calMeta]);
+  }, [focusHabitId, habits, entryIndex, calMeta]);
 
   // Rincian mutabaah tanggal yang diketuk — null berarti sheet tertutup.
   const dayDetail = useMemo(() => {
@@ -172,7 +180,7 @@ export default function ProgressPage() {
     const [yy, mm, dd] = iso.split("-").map(Number);
     const cellDate = new Date(yy, mm - 1, dd);
     const items: DayItem[] = habits.map((h) => {
-      const e = dayEntries.find((x) => x.date === iso && x.habit_id === h.id);
+      const e = entryIndex.get(`${iso}|${h.id}`);
       const value = e ? Number(e.value) : 0;
       const target = Number(h.target_value) || 1;
       const done = value >= target && value > 0;
@@ -216,9 +224,14 @@ export default function ProgressPage() {
     const wajibDone = items.filter((i) => i.category === "Ibadah Wajib" && i.status === "done");
     const berjamaah = wajibDone.filter((i) => i.context === "BERJAMAAH").length;
     const sendiri = wajibDone.filter((i) => i.context === "SENDIRI").length;
-    const note = dayEntries.map((x) => (x.date === iso ? x.note?.trim() : "")).find((n) => n) ?? "";
+    let note = "";
+    for (const e of entryIndex.values()) {
+      if (e.date !== iso) continue;
+      const t = e.note?.trim() ?? "";
+      if (t) { note = t; break; }
+    }
     return { day, iso, label: calMeta.label(day), progress: dailyProgress(items), items, groups, strip, berjamaah, sendiri, note };
-  }, [selectedDay, calMeta, dayEntries, habits]);
+  }, [selectedDay, calMeta, entryIndex, habits]);
 
   useEffect(() => {
     void (async () => {
@@ -238,32 +251,9 @@ export default function ProgressPage() {
       setMonthLoading(true);
       try {
         const nowForRange = new Date();
-        // Hero + streak: selalu 30 hari terakhir s.d. hari ini (jangkar kini).
+        // Satu query gabungan: dari yang terawal (30 hari lalu / tgl 1 bulan filter)
+        // sampai akhir bulan filter. Semua turunan di bawah memakai indeks map.
         const thirtyAgo = localDateKey(daysAgoLocal(29, nowForRange));
-        const { data: nowData } = await supabase.from("mutabaah_entries").select("habit_id,value,status,date").eq("family_id", family.familyId).eq("user_id", targetId).gte("date", thirtyAgo);
-        const nowRows = (nowData ?? []) as EntryRow[];
-        const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
-        const weekVals: { day: string; value: number }[] = [];
-        for (let i = 6; i >= 0; i--) {
-          const d = daysAgoLocal(i, nowForRange);
-          const iso = localDateKey(d);
-          const items = hRows.map((h) => { const e = nowRows.find((x) => x.date === iso && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0, status: e?.status }; });
-          weekVals.push({ day: dayNames[d.getDay()], value: dailyProgress(items) });
-        }
-        setWeekly(weekVals);
-        setAvgWeekly(weekVals.length ? Math.round(weekVals.reduce((a, b) => a + b.value, 0) / weekVals.length) : 0);
-        setActiveDays(weekVals.filter((w) => w.value > 0).length);
-        setBestDay(weekVals.reduce((best, cur) => (cur.value > best.value ? cur : best), weekVals[0] ?? { day: "-", value: 0 }));
-        const streakDays: number[] = [];
-        for (let i = 29; i >= 0; i--) {
-          const d = localDateKey(daysAgoLocal(i, nowForRange));
-          const items = hRows.map((h) => { const e = nowRows.find((x) => x.date === d && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0, status: e?.status }; });
-          streakDays.push(dailyProgress(items));
-        }
-        let curStreak = 0; for (let i = streakDays.length - 1; i >= 0; i--) { if (isStreakDay(streakDays[i])) curStreak++; else break; }
-        setStreak(curStreak);
-
-        // Bulan terfilter: tgl 1 s.d. akhir bulan (hari ini bila bulan berjalan).
         const mFirst = new Date(nowForRange.getFullYear(), nowForRange.getMonth() + monthOffset, 1);
         const mYear = mFirst.getFullYear();
         const mMon = mFirst.getMonth();
@@ -273,23 +263,44 @@ export default function ProgressPage() {
         const mStart = `${mYear}-${pad2(mMon + 1)}-01`;
         const mNext = new Date(mYear, mMon + 1, 1);
         const mEndEx = `${mNext.getFullYear()}-${pad2(mNext.getMonth() + 1)}-01`;
-        const { data: monthData } = await supabase.from("mutabaah_entries").select("habit_id,value,status,date,context,note").eq("family_id", family.familyId).eq("user_id", targetId).gte("date", mStart).lt("date", mEndEx);
-        const monthRows = (monthData ?? []) as EntryRow[];
+        const rangeStart = mStart < thirtyAgo ? mStart : thirtyAgo;
+        const { data: allData } = await supabase.from("mutabaah_entries").select("habit_id,value,status,date,context,note").eq("family_id", family.familyId).eq("user_id", targetId).gte("date", rangeStart).lt("date", mEndEx);
+        const allRows = (allData ?? []) as EntryRow[];
+        const byKey = new Map(allRows.map((e) => [`${e.date}|${e.habit_id}`, e]));
+        const itemsFor = (iso: string) =>
+          hRows.map((h) => { const e = byKey.get(`${iso}|${h.id}`); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0, status: e?.status }; });
+        // Hero + streak: selalu 30 hari terakhir s.d. hari ini (jangkar kini).
+        const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+        const weekVals: { day: string; value: number }[] = [];
+        for (let i = 6; i >= 0; i--) {
+          const d = daysAgoLocal(i, nowForRange);
+          const iso = localDateKey(d);
+          weekVals.push({ day: dayNames[d.getDay()], value: dailyProgress(itemsFor(iso)) });
+        }
+        setWeekly(weekVals);
+        setAvgWeekly(weekVals.length ? Math.round(weekVals.reduce((a, b) => a + b.value, 0) / weekVals.length) : 0);
+        setActiveDays(weekVals.filter((w) => w.value > 0).length);
+        setBestDay(weekVals.reduce((best, cur) => (cur.value > best.value ? cur : best), weekVals[0] ?? { day: "-", value: 0 }));
+        const streakDays: number[] = [];
+        for (let i = 29; i >= 0; i--) {
+          streakDays.push(dailyProgress(itemsFor(localDateKey(daysAgoLocal(i, nowForRange)))));
+        }
+        let curStreak = 0; for (let i = streakDays.length - 1; i >= 0; i--) { if (isStreakDay(streakDays[i])) curStreak++; else break; }
+        setStreak(curStreak);
+
+        // Bulan terfilter: tgl 1 s.d. hari elapsed.
+        const monthRows = allRows.filter((e) => e.date >= mStart && e.date < mEndEx);
         setDayEntries(monthRows);
         const monthISOs: string[] = [];
         for (let d = 1; d <= mElapsed; d++) monthISOs.push(`${mYear}-${pad2(mMon + 1)}-${pad2(d)}`);
-        const mDaily = monthISOs.map((iso) =>
-          dailyProgress(
-            hRows.map((h) => { const e = monthRows.find((x) => x.date === iso && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0, status: e?.status }; })
-          )
-        );
+        const mDaily = monthISOs.map((iso) => dailyProgress(itemsFor(iso)));
         const avgMonth = mDaily.length ? Math.round(mDaily.reduce((a, b) => a + b, 0) / mDaily.length) : 0;
         const perfect = mDaily.filter((v) => v === 100).length;
         let longest = 0, run = 0; for (const v of mDaily) { if (isStreakDay(v)) { run++; longest = Math.max(longest, run); } else run = 0; }
         setMonthStats({ avg: avgMonth, perfect, longest });
         const bd = hRows.map((h) => {
           const vals = monthISOs.map((iso) => {
-            const e = monthRows.find((x) => x.date === iso && x.habit_id === h.id);
+            const e = byKey.get(`${iso}|${h.id}`);
             const v = e ? Number(e.value) : 0;
             if (h.type === "BOOLEAN") return v ? 100 : 0;
             return Math.round(Math.min(100, (v / Number(h.target_value)) * 100));
@@ -298,12 +309,11 @@ export default function ProgressPage() {
         });
         bd.sort((a, b) => b.pct - a.pct);
         setBreakdown(bd);
+        const dateSet = new Set(monthRows.map((x) => x.date));
         const cal: typeof monthDays = [];
         for (let d = 1; d <= mDays; d++) {
           const iso = `${mYear}-${pad2(mMon + 1)}-${pad2(d)}`;
-          const items = hRows.map((h) => { const e = monthRows.find((x) => x.date === iso && x.habit_id === h.id); return { type: h.type, target: Number(h.target_value), value: e ? Number(e.value) : 0, status: e?.status }; });
-          const hasAny = monthRows.some((x) => x.date === iso);
-          const p = hasAny ? dailyProgress(items) : null;
+          const p = dateSet.has(iso) ? dailyProgress(itemsFor(iso)) : null;
           cal.push({ day: d, progress: p, status: calendarStatus(p) });
         }
         setMonthDays(cal);
@@ -346,14 +356,15 @@ export default function ProgressPage() {
   if (habits.length === 0) {
     return (
       <div className="space-y-6">
-        <Card className="p-10 text-center rounded-[24px] border-dashed">
-          <CalendarDays className="h-8 w-8 mx-auto text-muted-foreground" />
-          <h2 className="font-semibold mt-3">Belum ada data perjalanan</h2>
-          <p className="text-sm text-muted-foreground mt-1 leading-6">Isi mutabaah sekali, dan grafik konsistensimu akan muncul di sini.</p>
-          <Link href="/mutabaah" className="inline-block mt-5">
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary text-white text-sm font-medium px-5 py-2.5">Isi hari ini <ArrowRight className="h-4 w-4" /></span>
+        <EmptyState
+          icon={<CalendarDays className="h-6 w-6" aria-hidden="true" />}
+          title="Belum ada data perjalanan"
+          desc="Isi mutabaah sekali, dan grafik konsistensimu akan muncul di sini."
+        >
+          <Link href="/mutabaah" className="inline-flex items-center gap-1 rounded-full bg-primary text-white text-sm font-medium px-5 py-2.5 min-h-[44px]">
+            Isi hari ini <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Link>
-        </Card>
+        </EmptyState>
       </div>
     );
   }

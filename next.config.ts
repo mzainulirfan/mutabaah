@@ -4,7 +4,8 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       // Hub /keluarga dilebur ke /profil (seksi Keluarga); sub-halaman /keluarga/* tetap ada.
-      { source: "/keluarga", destination: "/profil", permanent: true },
+      // Sementara (307): jangan permanen sampai struktur final, agar cache browser tak mengunci.
+      { source: "/keluarga", destination: "/profil", permanent: false },
     ];
   },
   async headers() {

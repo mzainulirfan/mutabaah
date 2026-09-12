@@ -1,5 +1,4 @@
 "use server";
-import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
 const T_HABITS = "mutabaah_habits";
@@ -22,9 +21,29 @@ export async function createHabit(input: HabitInput) {
   if (!auth.user) throw new Error("Unauthorized");
   const { data, error } = await supabase.from(T_HABITS).insert(input).select().single();
   if (error) throw new Error(error.message);
-  revalidatePath("/mutabaah");
-  revalidatePath("/keluarga");
+  // Tanpa revalidatePath: semua konsumen adalah client component yang refresh manual.
   return data;
+}
+
+export async function createHabits(familyId: string, items: Omit<HabitInput, "family_id">[]) {
+  const supabase = await createClient();
+  if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Unauthorized");
+  const { data: existing } = await supabase.from(T_HABITS).select("name").eq("family_id", familyId);
+  const taken = new Set(((existing ?? []) as { name: string }[]).map((h) => h.name.trim().toLowerCase()));
+  const fresh = items.filter((it) => {
+    const key = it.name.trim().toLowerCase();
+    if (taken.has(key)) return false;
+    taken.add(key);
+    return true;
+  });
+  if (fresh.length === 0) return { added: 0 };
+  const { error } = await supabase
+    .from(T_HABITS)
+    .insert(fresh.map((it, i) => ({ ...it, family_id: familyId, sort_order: i })));
+  if (error) throw new Error(error.message);
+  return { added: fresh.length };
 }
 
 export async function updateHabit(id: string, patch: Partial<HabitInput> & { is_active?: boolean }) {
@@ -34,7 +53,6 @@ export async function updateHabit(id: string, patch: Partial<HabitInput> & { is_
   if (!auth.user) throw new Error("Unauthorized");
   const { error } = await supabase.from(T_HABITS).update(patch).eq("id", id);
   if (error) throw new Error(error.message);
-  revalidatePath("/mutabaah");
 }
 
 export async function deleteHabit(id: string) {
@@ -44,15 +62,6 @@ export async function deleteHabit(id: string) {
   if (!auth.user) throw new Error("Unauthorized");
   const { error } = await supabase.from(T_HABITS).delete().eq("id", id);
   if (error) throw new Error(error.message);
-  revalidatePath("/mutabaah");
-}
-
-export async function getTodayMutabaah(familyId: string, userId: string, date: string) {
-  const supabase = await createClient();
-  if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
-  const { data: habits } = await supabase.from(T_HABITS).select("*").eq("family_id", familyId).eq("is_active", true).order("sort_order");
-  const { data: entries } = await supabase.from(T_ENTRIES).select("*").eq("user_id", userId).eq("date", date);
-  return { habits, entries };
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -93,7 +102,5 @@ export async function updateMutabaahEntry(input: {
     .select()
     .single();
   if (error) throw new Error(error.message);
-  revalidatePath("/mutabaah");
-  revalidatePath("/progress");
   return data;
 }

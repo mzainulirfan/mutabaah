@@ -125,19 +125,13 @@ export default function OnboardingPage() {
     setNotice(null);
     setApplying(true);
     try {
-      const { createHabit } = await import("@/lib/actions/habit");
+      const { createHabits } = await import("@/lib/actions/habit");
       const items = TEMPLATES[template];
-      for (const it of items) {
-        await createHabit({
-          family_id: familyId,
-          name: it.name,
-          category: it.category,
-          type: it.type,
-          target_value: it.target,
-          unit: it.unit,
-        });
-      }
-      setAppliedCount(items.length);
+      const res = await createHabits(
+        familyId,
+        items.map((it) => ({ name: it.name, category: it.category, type: it.type, target_value: it.target, unit: it.unit }))
+      );
+      setAppliedCount(res.added);
       setStep(2);
     } catch (e) {
       setNotice(errMsg(e));
@@ -156,7 +150,7 @@ export default function OnboardingPage() {
             </span>
             Mutabaah
           </Link>
-          <Link href="/beranda" className="text-xs text-muted-foreground underline underline-offset-4 rounded-full px-2 py-1">
+          <Link href={gate === "ready" ? "/beranda" : "/login"} className="text-xs text-muted-foreground underline underline-offset-4 rounded-full px-2 py-1">
             Lewati panduan
           </Link>
         </div>

@@ -6,6 +6,17 @@ const PUBLIC_PATHS = ["/", "/login", "/daftar", "/gabung", "/onboarding", "/auth
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
+  const pathname = request.nextUrl.pathname;
+  // "/" hanya cocok persis — startsWith("/") akan menandai SEMUA path sebagai publik.
+  const isPublic =
+    PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/")) ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/api/auth");
+  const isProtected = ["/beranda", "/mutabaah", "/progress", "/keluarga", "/profil"].some((p) => pathname === p || pathname.startsWith(p + "/"));
+
+  // Bukan rute proteksi: keluar SEBELUM membuat client Supabase (hemat parse cookie).
+  if (!isProtected) return supabaseResponse;
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -26,18 +37,8 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  const pathname = request.nextUrl.pathname;
-  // "/" hanya cocok persis — startsWith("/") akan menandai SEMUA path sebagai publik.
-  const isPublic =
-    PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/")) ||
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/api/auth");
-  const isProtected = ["/beranda", "/mutabaah", "/progress", "/keluarga", "/profil"].some((p) => pathname === p || pathname.startsWith(p + "/"));
-
   // Protected routes: cukup baca sesi dari cookie (tanpa network).
   // Validasi penuh tetap dilakukan per halaman via auth.getUser() + RLS.
-  if (!isProtected) return supabaseResponse;
-
   const {
     data: { session },
   } = await supabase.auth.getSession();

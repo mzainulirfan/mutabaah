@@ -222,14 +222,16 @@ export default function AmalanPage() {
     const items = templates[key];
     if (!items) return;
     if (!confirm(`Tambahkan ${items.length} amalan contoh "${key}"? Yang sudah ada tidak diduplikasi.`)) return;
-    const { createHabit } = await import("@/lib/actions/habit");
-    for (const it of items) {
-      if (habits.some((h) => h.name === it.name)) continue;
-      await createHabit({ family_id: familyId, name: it.name, category: it.category, type: it.type, target_value: it.target, unit: it.unit });
-    }
-    clearFamilyCache();
-    setMsg(`Contoh "${key}" ditambahkan. Bisa diubah setelahnya.`);
-    load();
+    const { createHabits } = await import("@/lib/actions/habit");
+    try {
+      const res = await createHabits(
+        familyId,
+        items.map((it) => ({ name: it.name, category: it.category, type: it.type, target_value: it.target, unit: it.unit }))
+      );
+      clearFamilyCache();
+      setMsg(res.added > 0 ? `${res.added} amalan contoh "${key}" ditambahkan. Bisa diubah setelahnya.` : `Semua amalan "${key}" sudah ada — tidak ada yang ditambahkan.`);
+      load();
+    } catch (e: unknown) { setErr(friendlyHabitError(e)); }
   };
 
   if (loading) {

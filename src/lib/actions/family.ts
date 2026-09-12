@@ -1,7 +1,9 @@
 "use server";
-import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createHash, randomBytes } from "crypto";
+
+// Catatan: tanpa revalidatePath di file ini — semua konsumen adalah client
+// component yang refresh manual (clearFamilyCache + patch/refetch lokal).
 
 // Table names — all prefixed mutabaah_
 const T_FAMILIES = "mutabaah_families";
@@ -19,7 +21,6 @@ export async function createFamily(formData: FormData) {
   if (error) throw new Error(error.message);
   const { error: memErr } = await supabase.from(T_MEMBERS).insert({ family_id: family.id, user_id: user.user.id, role: "OWNER" });
   if (memErr) throw new Error(memErr.message);
-  revalidatePath("/keluarga");
   return family;
 }
 
@@ -28,7 +29,6 @@ export async function updateFamily(familyId: string, formData: FormData) {
   const supabase = await createClient();
   if (!supabase) throw new Error("Supabase tidak terkonfigurasi");
   await supabase.from(T_FAMILIES).update({ name }).eq("id", familyId);
-  revalidatePath("/keluarga");
 }
 
 const INVITE_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -66,7 +66,6 @@ export async function acceptInvitation(token: string) {
   // gunakan RPC atomik (fix race + used_at + RLS)
   const { data, error } = await supabase.rpc("accept_invitation", { p_hash: createHash("sha256").update(token).digest("hex") });
   if (error) throw new Error(error.message);
-  revalidatePath("/keluarga");
   return { familyId: data as string };
 }
 
@@ -77,7 +76,6 @@ export async function acceptInvitationByCode(code: string) {
   if (!/^[A-Z0-9]{6}$/.test(clean)) throw new Error("Kode terdiri dari 6 huruf/angka.");
   const { data, error } = await supabase.rpc("accept_invitation_by_code", { p_code: clean });
   if (error) throw new Error(error.message);
-  revalidatePath("/keluarga");
   return { familyId: data as string };
 }
 
@@ -90,7 +88,6 @@ export async function setManagePermission(familyId: string, userId: string, allo
     p_allowed: allowed,
   });
   if (error) throw new Error(error.message);
-  revalidatePath("/keluarga");
 }
 
 export async function setMemberRole(familyId: string, userId: string, role: "PARENT" | "MEMBER") {
@@ -102,7 +99,6 @@ export async function setMemberRole(familyId: string, userId: string, role: "PAR
     p_role: role,
   });
   if (error) throw new Error(error.message);
-  revalidatePath("/keluarga");
 }
 
 export async function setViewPermission(familyId: string, userId: string, allowed: boolean) {
@@ -114,7 +110,6 @@ export async function setViewPermission(familyId: string, userId: string, allowe
     p_allowed: allowed,
   });
   if (error) throw new Error(error.message);
-  revalidatePath("/keluarga");
 }
 
 export async function removeFamilyMember(familyId: string, userId: string) {
@@ -124,5 +119,4 @@ export async function removeFamilyMember(familyId: string, userId: string) {
   if (!auth.user) throw new Error("Unauthorized");
   const { error } = await supabase.from(T_MEMBERS).delete().eq("family_id", familyId).eq("user_id", userId);
   if (error) throw new Error(error.message);
-  revalidatePath("/keluarga");
 }
